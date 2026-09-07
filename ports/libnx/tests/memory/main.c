@@ -65,15 +65,45 @@ static bool MemoryChecks(void)
             return false;
     }
     Record("memory.recommit_zero", 1);
+    unsigned char* rollback = LibnxMemoryReserve(0x30000, 0x1000);
+    if (!rollback || !LibnxMemoryCommit(rollback, 0x10000))
+        return false;
+    rollback[0] = 0x91;
     LibnxMemoryTestAllocationLimit(1);
-    bool unexpectedlyCommitted = LibnxMemoryCommit(memory, 0x4000);
+    bool unexpectedlyCommitted = LibnxMemoryCommit(rollback, 0x30000);
     LibnxMemoryTestAllocationLimit(-1);
-    if (unexpectedlyCommitted || !CheckMemoryType(memory + 0x2000, MemType_Unmapped) ||
-        !CheckMemoryType(memory + 0x3000, MemType_Unmapped) || memory[0x1000] != 3)
+    if (unexpectedlyCommitted || !CheckMemoryType(rollback + 0x10000, MemType_Unmapped) ||
+        !CheckMemoryType(rollback + 0x20000, MemType_Unmapped) || rollback[0] != 0x91 ||
+        !LibnxMemoryRelease(rollback, 0x30000))
         return false;
     Record("memory.commit_rollback", 1);
     bool released = LibnxMemoryRelease(memory, 0x4000) && CheckMemoryType(memory, MemType_Unmapped);
     Record("memory.release", released);
+    return released;
+}
+
+static bool LargeMemoryChecks(void)
+{
+    const size_t size = 64 * 1024 * 1024;
+    unsigned char* memory = LibnxMemoryReserve(size, 0x10000);
+    if (!memory || !LibnxMemoryCommit(memory, size))
+        return false;
+    for (size_t offset = 0; offset < size; offset += 0x1000)
+    {
+        if (memory[offset] != 0)
+            return false;
+        memory[offset] = (unsigned char)(offset / 0x1000 + 7);
+    }
+    // Decommit through a backing-block boundary while retaining adjacent pages.
+    if (!LibnxMemoryDecommit(memory + 0xF000, 0x2000) ||
+        !CheckMemoryType(memory + 0xF000, MemType_Unmapped) ||
+        !CheckMemoryType(memory + 0x10000, MemType_Unmapped) ||
+        memory[0xE000] != 21 || memory[0x11000] != 24 ||
+        !LibnxMemoryCommit(memory + 0xF000, 0x2000) ||
+        memory[0xF000] != 0 || memory[0x10000] != 0)
+        return false;
+    bool released = LibnxMemoryRelease(memory, size) && CheckMemoryType(memory, MemType_Unmapped);
+    Record("memory.large_and_partial", released);
     return released;
 }
 
@@ -159,7 +189,7 @@ static bool EventChecks(void)
 int main(void)
 {
     Record("begin", 1);
-    bool memory = MemoryChecks();
+    bool memory = MemoryChecks() && LargeMemoryChecks();
     Record("memory.checks", memory);
     bool events = EventChecks() && EventBroadcastChecks();
     Record("events.checks", events);
