@@ -2,6 +2,8 @@
 
 本分支基于公开的 `dotnet/runtime`，目标是直接使用 devkitPro/libnx 构建 Nintendo Switch homebrew。当前处于源码构建与 ABI 验证阶段，尚未实现可运行的 NativeAOT/libnx 运行时。
 
+已完成的实验与限制见 [第二轮记录](results/2026-09-07-round2.md)。
+
 ## 固定基线
 
 - 上游：`https://github.com/dotnet/runtime.git`
