@@ -48,3 +48,16 @@ Windows 使用固定版本 Eden v0.2.1 的 `eden-cli.exe`：
 脚本在本仓库 `artifacts/libnx/emulator` 创建独立便携环境，复制已有的模拟器及许可证。测试分别运行修复分支与保留 Linux TLS 访问方式的负对照。前者必须通过，后者必须在地址比较处明确失败；不通过错误地址读取内存。
 
 结果与日志保存在 `artifacts/libnx/tls-probe`。这些测试验证了真实 NativeAOT 汇编宏的适配，但不包含完整运行时启动，也不代表托管 GC 或异常已经可用。
+
+## 上游平台配置与完整配置尝试
+
+`eng/native/configureplatform.cmake` 和 `configurecompiler.cmake` 现在识别 `Generic` / `libnx` / `aarch64` 工具链，生成 `HOST_LIBNX`、`TARGET_LIBNX` 和 ARM64 定义，不生成 Linux 平台定义。沿用 Unix 编译/ELF 分支不表示 libnx 已具备完整 POSIX 能力。
+
+```sh
+docker run --rm -v "$PWD:/runtime" nativeaot-libnx-build:10.0.11 bash ports/libnx/build-platform-probe.sh
+docker run --rm -v "$PWD:/runtime" nativeaot-libnx-build:10.0.11 bash ports/libnx/configure-runtime.sh
+```
+
+第一个命令验证实际编译宏和目标文件架构。第二个命令目前预期返回非零：上游 CoreCLR 配置还会进入 `Corehost.Static`，请求 libnx 没有的 GSS/Kerberos 原生依赖。由于工具链限制目标库搜索范围，它不会误用宿主 Linux 的 `libkrb5-dev`。诊断保存在 `artifacts/log/libnx/cross-configure.log`。
+
+下一步需要为 NativeAOT 整理独立于 CoreCLR 宿主的原生构建依赖，并继续实现 libnx 平台层；当前不能发布完整 libnx runtime-pack。
