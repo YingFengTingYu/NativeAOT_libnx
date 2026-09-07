@@ -53,6 +53,9 @@ bool InitializeGC()
     // Give some headstart to the finalizer thread by launching it early.
     if (!RhInitializeFinalization())
         return false;
+#ifdef TARGET_LIBNX
+    PalPrintFatalError("[AOTINIT] finalizer created\n");
+#endif
 
     // Initialize the special MethodTable used to mark free list entries in the GC heap.
     g_FreeObjectEEType.InitializeAsGcFreeType();
@@ -72,6 +75,9 @@ bool InitializeGC()
     HRESULT hr = GCHeapUtilities::InitializeGC();
     if (FAILED(hr))
         return false;
+#ifdef TARGET_LIBNX
+    PalPrintFatalError("[AOTINIT] GC implementation created\n");
+#endif
 
     // Apparently the Windows linker removes global variables if they are never
     // read from, which is a problem for g_gcDacGlobals since it's expected that
@@ -83,10 +89,16 @@ bool InitializeGC()
     hr = g_pGCHeap->Initialize();
     if (FAILED(hr))
         return false;
+#ifdef TARGET_LIBNX
+    PalPrintFatalError("[AOTINIT] GC heap initialized\n");
+#endif
 
     // Initialize HandleTable.
     if (!GCHandleUtilities::GetGCHandleManager()->Initialize())
         return false;
+#ifdef TARGET_LIBNX
+    PalPrintFatalError("[AOTINIT] GC handles initialized\n");
+#endif
 
 #ifdef TARGET_WINDOWS
     // By now finalizer thread should have initialized FLS slot for thread cleanup notifications.

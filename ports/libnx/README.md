@@ -1,8 +1,8 @@
 # NativeAOT / libnx 移植实验
 
-本分支基于公开的 `dotnet/runtime`，目标是直接使用 devkitPro/libnx 构建 Nintendo Switch homebrew。当前处于源码构建与 ABI 验证阶段，尚未实现可运行的 NativeAOT/libnx 运行时。
+本分支基于公开的 `dotnet/runtime`，目标是直接使用 devkitPro/libnx 构建 Nintendo Switch homebrew。当前原型已经在模拟器通过基础 C#、数组分配、GC 后数据检查和显式异常测试；尚未完成全面运行时及游戏验证。
 
-已完成的实验与限制见 [第二轮](results/2026-09-07-round2.md)、[第三轮](results/2026-09-07-round3.md)、[第四轮](results/2026-09-07-round4.md) 和 [第五轮](results/2026-09-07-round5.md) 记录。
+已完成的实验与限制见 [第二轮](results/2026-09-07-round2.md)、[第三轮](results/2026-09-07-round3.md)、[第四轮](results/2026-09-07-round4.md)、[第五轮](results/2026-09-07-round5.md) 和 [第六至八轮](results/2026-09-07-round6-8.md) 记录。
 
 上下文探针：`build-context-probe.sh`，运行时使用 `run-tls-probe.ps1 -Suite Context`。内存/事件探针：`build-memory-probe.sh`，运行时使用 `-Suite Memory`。两者均需要传入固定的 `-EdenPath`，且当前均已在模拟器通过。
 
@@ -64,4 +64,4 @@ docker run --rm -v "$PWD:/runtime" nativeaot-libnx-build:10.0.11 bash ports/libn
 
 第一个命令验证实际编译宏、目标文件架构以及 API 链接检测。第二个命令使用第三轮新增的 NativeAOT 独立入口，目前已经配置成功，不再进入 CoreCLR 宿主的 GSS/Kerberos 依赖。诊断保存在 `artifacts/log/libnx/cross-configure.log`。
 
-执行 `bash ports/libnx/build-runtime.sh` 可继续编译实际运行时；当前仍有 Unix 平台实现需要替换，尚不能发布完整 libnx runtime-pack。
+执行 `bash ports/libnx/build-runtime.sh` 可编译当前原型运行时及最小 `System.Native`。使用 `link-managed-probe.sh` 链接时，需通过 `LIBNX_MANAGED_OBJECT` 和 `LIBNX_PROBE_HOST` 指定托管目标文件与原生入口。编译托管代码必须引入 `Libnx.NativeAOT.targets` 的 `--noinlinetls` 设置。当前产物仍不是覆盖完整 API 的正式 runtime-pack。

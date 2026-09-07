@@ -14,7 +14,7 @@
 #include <time.h>
 #include <minipal/thread.h>
 
-extern "C" char __start__[];
+extern "C" void _start();
 extern "C" char __end__[];
 extern "C" uint32_t svcOutputDebugString(const char*, uint64_t);
 
@@ -120,11 +120,11 @@ void PalFlushProcessWriteBuffers() { GCToOSInterface::FlushProcessWriteBuffers()
 HANDLE PalGetModuleHandleFromPointer(void* pointer)
 {
     uintptr_t value = (uintptr_t)pointer;
-    return value >= (uintptr_t)__start__ && value < (uintptr_t)__end__ ? __start__ : nullptr;
+    return value >= (uintptr_t)&_start && value < (uintptr_t)__end__ ? (void*)&_start : nullptr;
 }
 void PalGetModuleBounds(HANDLE module, uint8_t** low, uint8_t** high)
 {
-    *low = (uint8_t*)__start__;
+    *low = (uint8_t*)&_start;
     *high = (uint8_t*)__end__ - 1;
 }
 int32_t PalGetModuleFileName(const TCHAR** name, HANDLE module)

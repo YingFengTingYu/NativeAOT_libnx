@@ -197,7 +197,18 @@ bool LibnxStartThread(uint32_t (*callback)(void*), void* argument, size_t stackS
         uint64_t coreMask = 0;
         s_threadError = svcGetInfo(&coreMask, InfoType_CoreMask, CUR_PROCESS_HANDLE, 0);
         if (s_threadError == 0)
-            s_threadError = svcSetThreadCoreMask(entry->thread.handle, -1, coreMask);
+        {
+            int idealCore = svcGetCurrentProcessorNumber();
+            for (int core = 0; core < 4; core++)
+            {
+                if ((coreMask & (UINT64_C(1) << core)) && core != idealCore)
+                {
+                    idealCore = core;
+                    break;
+                }
+            }
+            s_threadError = svcSetThreadCoreMask(entry->thread.handle, idealCore, coreMask);
+        }
         if (s_threadError == 0)
             s_threadError = threadStart(&entry->thread);
         if (s_threadError != 0)

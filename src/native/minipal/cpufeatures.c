@@ -452,7 +452,10 @@ int minipal_getcpufeatures(void)
 #if defined(HOST_ARM64)
 #if defined(HOST_UNIX)
 
-#if HAVE_AUXV_HWCAP_H
+#if defined(HOST_LIBNX)
+    // libnx's sysctlbyname is a BSD networking service, not the Apple CPU
+    // feature interface. Keep optional ISA extensions disabled for now.
+#elif HAVE_AUXV_HWCAP_H
     unsigned long hwCap = getauxval(AT_HWCAP);
 
     assert(hwCap & HWCAP_ASIMD);

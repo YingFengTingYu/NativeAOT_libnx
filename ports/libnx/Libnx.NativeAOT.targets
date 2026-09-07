@@ -1,0 +1,8 @@
+<Project>
+  <!-- The stock Linux ARM64 ILC can emit TPIDR_EL0 accesses for managed
+       thread statics. Use runtime helpers until libnx-specific inline codegen
+       is implemented. This does not disable thread statics themselves. -->
+  <ItemGroup>
+    <IlcArg Include="--noinlinetls" />
+  </ItemGroup>
+</Project>
