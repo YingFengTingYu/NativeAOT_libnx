@@ -30,3 +30,21 @@ docker run --rm -v "$PWD:/runtime" nativeaot-libnx-build:10.0.11 bash ports/libn
 Windows PowerShell 使用 `--mount "type=bind,source=$((Get-Location).Path),target=/runtime"` 指定仓库挂载。
 
 主机构建只调用上游原生构建脚本，不构建托管类库或 ILC，也不引入其他平台的运行时二进制。
+
+## ARM64 TLS 汇编验证
+
+第一处目标端补丁为 `src/coreclr/nativeaot/Runtime/unix/unixasmmacrosarm64.inc` 增加 `TARGET_LIBNX` 分支，使用 devkitA64 的 soft thread pointer 和 local-exec TLS 重定位。测试直接包含实际运行时的汇编宏，与 C++ 编译器生成的 `thread_local` 地址比较，同时验证 x0–x7 参数寄存器、主线程和两个工作线程的隔离。
+
+```sh
+docker run --rm -v "$PWD:/runtime" nativeaot-libnx-build:10.0.11 bash ports/libnx/build-tls-probe.sh
+```
+
+Windows 使用固定版本 Eden v0.2.1 的 `eden-cli.exe`：
+
+```powershell
+.\ports\libnx\run-tls-probe.ps1 -EdenPath '模拟器的绝对路径/eden-cli.exe'
+```
+
+脚本在本仓库 `artifacts/libnx/emulator` 创建独立便携环境，复制已有的模拟器及许可证。测试分别运行修复分支与保留 Linux TLS 访问方式的负对照。前者必须通过，后者必须在地址比较处明确失败；不通过错误地址读取内存。
+
+结果与日志保存在 `artifacts/libnx/tls-probe`。这些测试验证了真实 NativeAOT 汇编宏的适配，但不包含完整运行时启动，也不代表托管 GC 或异常已经可用。

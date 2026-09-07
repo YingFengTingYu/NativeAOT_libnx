@@ -203,6 +203,13 @@ C_FUNC(\Name):
     // End of the sequence
 
     mov     \target, x0
+#elif defined(TARGET_LIBNX)
+    // Match devkitA64's -mtp=soft, local-exec TLS convention. libnx's
+    // __aarch64_read_tp returns the Newlib thread pointer and only changes x0.
+    // x0 and lr are saved above; all other registers must remain untouched.
+    bl      C_FUNC(__aarch64_read_tp)
+    add     \target, x0, #:tprel_hi12:\var
+    add     \target, \target, #:tprel_lo12_nc:\var
 #else
     adrp    x0, :tlsdesc:\var
     ldr     \target, [x0, #:tlsdesc_lo12:\var]
