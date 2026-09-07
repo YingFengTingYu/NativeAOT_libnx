@@ -2,7 +2,9 @@
 
 本分支基于公开的 `dotnet/runtime`，目标是直接使用 devkitPro/libnx 构建 Nintendo Switch homebrew。当前处于源码构建与 ABI 验证阶段，尚未实现可运行的 NativeAOT/libnx 运行时。
 
-已完成的实验与限制见 [第二轮](results/2026-09-07-round2.md)、[第三轮](results/2026-09-07-round3.md) 和 [第四轮](results/2026-09-07-round4.md) 记录。
+已完成的实验与限制见 [第二轮](results/2026-09-07-round2.md)、[第三轮](results/2026-09-07-round3.md)、[第四轮](results/2026-09-07-round4.md) 和 [第五轮](results/2026-09-07-round5.md) 记录。
+
+上下文探针：`build-context-probe.sh`，运行时使用 `run-tls-probe.ps1 -Suite Context`。内存/事件探针：`build-memory-probe.sh`，运行时使用 `-Suite Memory`。两者均需要传入固定的 `-EdenPath`，且当前均已在模拟器通过。
 
 ## 固定基线
 

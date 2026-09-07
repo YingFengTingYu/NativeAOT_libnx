@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$EdenPath,
-    [ValidateSet('Tls', 'Context')]
+    [ValidateSet('Tls', 'Context', 'Memory')]
     [string]$Suite = 'Tls'
 )
 
@@ -58,12 +58,12 @@ flush_line=true
 [System.IO.File]::WriteAllText($configPath, $config, [System.Text.UTF8Encoding]::new($false))
 
 $allPassed = $true
-$modes = if ($Suite -eq 'Tls') { @('libnx', 'linux_control') } else { @('context') }
-$probeDirectory = if ($Suite -eq 'Tls') { 'tls-probe' } else { 'context-probe' }
-$prefix = if ($Suite -eq 'Tls') { 'AOTTLS' } else { 'AOTCTX' }
+$modes = if ($Suite -eq 'Tls') { @('libnx', 'linux_control') } else { @($Suite.ToLowerInvariant()) }
+$probeDirectory = $Suite.ToLowerInvariant() + '-probe'
+$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } }
 foreach ($mode in $modes)
 {
-    $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } else { 'nativeaot-context.nro' }
+    $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } else { "nativeaot-$mode.nro" }
     $nro = Join-Path $outputRoot "$probeDirectory/$nroName"
     $nro = (Resolve-Path -LiteralPath $nro).Path
     $emulatorLog = Join-Path $profileRoot 'log/eden_log.txt'
@@ -88,7 +88,13 @@ foreach ($mode in $modes)
     }
     $observed = @([regex]::Matches($logText, ('\[' + $prefix + '\] ([^\r\n]+)')) |
         ForEach-Object { $_.Groups[1].Value })
-    $required = if ($Suite -eq 'Context')
+    $required = if ($Suite -eq 'Memory')
+    {
+        @('begin=1', 'memory.reserve=1', 'memory.repeat_commit=1', 'memory.bounds=1',
+          'memory.recommit_zero=1', 'memory.commit_rollback=1', 'memory.release=1', 'memory.checks=1',
+          'event.auto_reset=1', 'event.manual_reset=1', 'events.checks=1', 'pass=1')
+    }
+    elseif ($Suite -eq 'Context')
     {
         @('begin=1', 'context.checks=1', 'thread.ids=1', 'pass=1')
     }
@@ -117,6 +123,13 @@ foreach ($mode in $modes)
         MissingMarkers = $missing
     }
     $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $outputRoot "$probeDirectory/$mode-result.json") -Encoding utf8NoBOM
+    $archiveRoot = Join-Path $outputRoot ("$probeDirectory/history/" + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff'))
+    New-Item -ItemType Directory -Force -Path $archiveRoot | Out-Null
+    Copy-Item -LiteralPath (Join-Path $outputRoot "$probeDirectory/$mode-result.json") -Destination $archiveRoot
+    if (Test-Path -LiteralPath $savedLog)
+    {
+        Copy-Item -LiteralPath $savedLog -Destination $archiveRoot
+    }
     Write-Output "$mode : TestPassed=$passed"
     $observed | ForEach-Object { Write-Output "  [$prefix] $_" }
     $allPassed = $allPassed -and $passed
