@@ -22,8 +22,9 @@ c_static_assert(SEEK_SET == PAL_SEEK_SET && SEEK_CUR == PAL_SEEK_CUR && SEEK_END
 static Mutex s_positionLock;
 void LibnxInitializeDebugStdio(void);
 
-// The initial host mounts SD at the managed Unix root. Relative paths follow
-// libnx's working directory; explicit device paths remain usable by native code.
+// SD remains the managed Unix root; /romfs is reserved for the host-mounted
+// read-only RomFS. Managed paths must be Unix-rooted before BCL normalization.
+// Relative paths follow libnx's working directory.
 static const char* NativePath(const char* path, char buffer[FS_MAX_PATH + 8])
 {
     if (!path)
@@ -38,6 +39,15 @@ static const char* NativePath(const char* path, char buffer[FS_MAX_PATH + 8])
     {
         errno = ENAMETOOLONG;
         return NULL;
+    }
+    if (strncmp(path, "/romfs", 6) == 0 && (path[6] == '/' || path[6] == '\0'))
+    {
+        memcpy(buffer, "romfs:", 6);
+        if (path[6] == '\0')
+            memcpy(buffer + 6, "/", 2);
+        else
+            memcpy(buffer + 6, path + 6, length - 5);
+        return buffer;
     }
     memcpy(buffer, "sdmc:", 5);
     memcpy(buffer + 5, path, length + 1);
@@ -320,6 +330,11 @@ char* SystemNative_GetCwd(char* buffer, int32_t size)
     const char* path = native;
     if (strncmp(path, "sdmc:", 5) == 0)
         path += 5;
+    else if (strncmp(path, "romfs:/", 7) == 0)
+    {
+        // Replacing "romfs:" with "/romfs" preserves the path length.
+        memcpy(native, "/romfs", 6);
+    }
     if (path[0] != '/') { errno = ENOTSUP; return NULL; }
     size_t length = strlen(path);
     if (length >= (size_t)size) { errno = ERANGE; return NULL; }

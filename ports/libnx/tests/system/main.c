@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "pal_io.h"
+#include "pal_process.h"
 #include "pal_threading.h"
 #include "pal_time.h"
 #include "pal_datetime.h"
@@ -81,6 +82,59 @@ static bool FileChecks(void)
     Record("file.cleanup", closed && deleted);
     return passed && closed && deleted;
 }
+static bool RomfsChecks(void)
+{
+    Result mounted = romfsInit();
+    Record("romfs.mount_result", mounted);
+    Record("romfs.mount", R_SUCCEEDED(mounted));
+    if (R_FAILED(mounted))
+        return false;
+    intptr_t fd = SystemNative_Open("/romfs/fixture.bin", PAL_O_RDONLY, 0);
+    if (fd < 0)
+    {
+        romfsExit();
+        return false;
+    }
+    FileStatus status;
+    char contents[16];
+    bool passed = SystemNative_Stat("/romfs", &status) == 0 &&
+                  (status.Mode & PAL_S_IFMT) == PAL_S_IFDIR &&
+                  SystemNative_FStat(fd, &status) == 0 && status.Size == sizeof(contents) &&
+                  SystemNative_Read(fd, contents, sizeof(contents)) == sizeof(contents) &&
+                  memcmp(contents, "0123456789abcdef", sizeof(contents)) == 0 &&
+                  SystemNative_LSeek(fd, 5, PAL_SEEK_SET) == 5 &&
+                  SystemNative_PRead(fd, contents, 4, 10) == 4 &&
+                  memcmp(contents, "abcd", 4) == 0 && SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 5;
+    Record("romfs.read_seek", passed);
+    passed = SystemNative_Close(fd) == 0 && passed;
+    fd = SystemNative_Open("/romfs/fixture.bin", PAL_O_WRONLY, 0);
+    bool readOnly = fd < 0;
+    if (fd >= 0)
+        SystemNative_Close(fd);
+    Record("romfs.read_only", readOnly);
+    char cwd[64];
+    bool paths = SystemNative_ChDir("/romfs") == 0 &&
+                 SystemNative_GetCwd(cwd, sizeof(cwd)) != NULL && strcmp(cwd, "/romfs/") == 0;
+    DIR* directory = SystemNative_OpenDir("/romfs/");
+    bool found = false;
+    if (directory)
+    {
+        DirectoryEntry entry;
+        while (SystemNative_ReadDir(directory, &entry) == 0)
+            found |= strcmp(entry.Name, "fixture.bin") == 0;
+        paths = SystemNative_CloseDir(directory) == 0 && paths;
+    }
+    paths = SystemNative_ChDir("/") == 0 && found && paths;
+    // A similar prefix must still select SD, not the reserved RomFS mount.
+    fd = SystemNative_Open("/romfs-sd-check.tmp", PAL_O_CREAT | PAL_O_TRUNC | PAL_O_RDWR, 0600);
+    bool sd = fd >= 0;
+    if (fd >= 0)
+        sd = SystemNative_Close(fd) == 0 && SystemNative_Unlink("/romfs-sd-check.tmp") == 0;
+    Record("romfs.paths_and_sd", paths && sd);
+    bool unmounted = R_SUCCEEDED(romfsExit());
+    return passed && readOnly && paths && sd && unmounted;
+}
+
 int main(void)
 {
     Record("begin", 1);
@@ -151,6 +205,7 @@ int main(void)
                         memcmp(first, second, sizeof(first)) != 0;
     Record("random.csrng_interface", secureRandom);
     bool files = FileChecks();
-    Record("pass", unmapped && timeout && time && random && secureRandom && files);
+    bool romfs = RomfsChecks();
+    Record("pass", unmapped && timeout && time && random && secureRandom && files && romfs);
     return 0;
 }
