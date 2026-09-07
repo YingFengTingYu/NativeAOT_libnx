@@ -10,3 +10,13 @@ add_subdirectory("${CLR_SRC_NATIVE_DIR}/containers" containers)
 add_subdirectory("${CLR_SRC_NATIVE_DIR}/eventpipe" eventpipe)
 add_subdirectory("${CLR_SRC_NATIVE_DIR}/minipal" shared_minipal)
 add_subdirectory(nativeaot)
+if(CLR_CMAKE_TARGET_LIBNX)
+  # The initial libnx shim uses the public PAL declarations, but not the full
+  # Unix implementation. Unprobed optional features remain disabled.
+  configure_file("${CLR_SRC_NATIVE_DIR}/libs/Common/pal_config.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/system-native-config/pal_config.h")
+  add_library(System.Native STATIC "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx.c")
+  target_include_directories(System.Native PRIVATE "${CLR_SRC_NATIVE_DIR}/libs/Common"
+    "${CLR_SRC_NATIVE_DIR}/libs/System.Native" "${CMAKE_CURRENT_BINARY_DIR}/system-native-config")
+  target_link_libraries(System.Native PRIVATE aotminipal)
+endif()
