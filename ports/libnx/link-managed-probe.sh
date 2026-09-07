@@ -17,6 +17,11 @@ flags=(-g -O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=
     -Wl,--start-group "$native/nativeaot/Runtime/Full/libRuntime.WorkstationGC.a" \
     "$native/shared_minipal/libaotminipal.a" \
     "$native/libSystem.Native.a" \
+    "$native/libSystem.IO.Compression.Native.a" \
+    "$native/_deps/fetchzlibng-build/libz.a" \
+    "$native/_deps/brotli-build/libbrotlienc.a" \
+    "$native/_deps/brotli-build/libbrotlidec.a" \
+    "$native/_deps/brotli-build/libbrotlicommon.a" \
     "$native/nativeaot/Runtime/Full/libstandalonegc-disabled.a" \
     "$native/nativeaot/Runtime/eventpipe/libeventpipe-disabled.a" \
     -L"$DEVKITPRO/libnx/lib" -lnx -lm -Wl,--end-group -Wl,--eh-frame-hdr \
@@ -24,3 +29,16 @@ flags=(-g -O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=
     -Wl,-Map,"$output/managed-probe.map" -o "$output/managed-probe.elf" \
     >"$output/link.log" 2>&1
 "$DEVKITPRO/tools/bin/elf2nro" "$output/managed-probe.elf" "$output/managed-probe.nro"
+mkdir -p "$output/licenses"
+cp "$repo_root/LICENSE.TXT" "$output/licenses/dotnet-runtime.txt"
+cp "$repo_root/THIRD-PARTY-NOTICES.TXT" "$output/licenses/dotnet-third-party-notices.txt"
+cp "$repo_root/src/native/external/zlib-ng/LICENSE.md" "$output/licenses/zlib-ng.txt"
+cp "$repo_root/src/native/external/brotli/LICENSE" "$output/licenses/brotli.txt"
+probe_licenses="$(dirname -- "$LIBNX_PROBE_HOST")/../licenses"
+if [[ -d "$probe_licenses" ]]; then
+    for license in "$probe_licenses"/*; do
+        if [[ -f "$license" ]]; then
+            cp "$license" "$output/licenses/"
+        fi
+    done
+fi

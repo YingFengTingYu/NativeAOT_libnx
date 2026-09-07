@@ -18,6 +18,8 @@
 
 线程池、Task、计时器、取消和异步文件读写见 [第十五轮](results/2026-09-07-round15.md)。
 
+zlib、gzip、Brotli、项目同版本 ZstdSharp 与第三方依赖收集见 [第十六轮](results/2026-09-07-round16.md)。
+
 - 上游：`https://github.com/dotnet/runtime.git`
 - 标记：`v10.0.11`
 - runtime 提交：`79d0c463f1b55624c874a11585f7e47731e8d675`
