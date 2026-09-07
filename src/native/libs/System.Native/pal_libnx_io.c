@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <string.h>
+#include <stdio.h>
 #include <errno.h>
 #include "pal_io.h"
 #include "pal_process.h"
@@ -58,6 +59,14 @@ int32_t SystemNative_ChDir(const char* path)
     char buffer[FS_MAX_PATH + 8];
     const char* native = NativePath(path, buffer);
     return native ? chdir(native) : -1;
+}
+
+int32_t SystemNative_Rename(const char* oldPath, const char* newPath)
+{
+    char oldBuffer[FS_MAX_PATH + 8], newBuffer[FS_MAX_PATH + 8];
+    const char* nativeOld = NativePath(oldPath, oldBuffer);
+    const char* nativeNew = NativePath(newPath, newBuffer);
+    return nativeOld && nativeNew ? rename(nativeOld, nativeNew) : -1;
 }
 
 static void ConvertStatus(const struct stat* source, FileStatus* output)
