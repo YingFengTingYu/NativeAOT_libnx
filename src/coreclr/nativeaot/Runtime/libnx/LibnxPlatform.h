@@ -25,6 +25,26 @@ void LibnxEventReset(void* event);
 uint32_t LibnxEventWait(void* event, uint32_t milliseconds);
 void LibnxEventClose(void* event);
 
+bool LibnxThreadsInitialize(void);
+bool LibnxThreadAttach(void* owner, void (*onExit)(void*));
+bool LibnxThreadPause(void* owner, void* context);
+bool LibnxThreadResume(void* owner);
+bool LibnxFlushThreadWrites(void);
+bool LibnxGetStackBounds(void** low, void** high);
+bool LibnxStartThread(uint32_t (*callback)(void*), void* argument, size_t stackSize);
+uint32_t LibnxThreadLastError(void);
+uint32_t LibnxCpuCount(void);
+uint64_t LibnxAllowedCores(void);
+bool LibnxSetCurrentThreadAffinity(uint32_t core);
+uint32_t LibnxCurrentCpu(void);
+uint32_t LibnxProcessId(void);
+uint64_t LibnxSystemTick(void);
+uint64_t LibnxTickFrequency(void);
+void LibnxSleep(uint32_t milliseconds);
+void LibnxYield(void);
+bool LibnxHeapInfo(uint64_t* total, uint64_t* available);
+uintptr_t LibnxVirtualLimit(bool endAddress);
+
 #ifdef __cplusplus
 }
 #endif

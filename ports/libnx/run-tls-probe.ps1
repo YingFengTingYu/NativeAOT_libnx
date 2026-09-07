@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$EdenPath,
-    [ValidateSet('Tls', 'Context', 'Memory')]
+    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System')]
     [string]$Suite = 'Tls'
 )
 
@@ -60,7 +60,7 @@ flush_line=true
 $allPassed = $true
 $modes = if ($Suite -eq 'Tls') { @('libnx', 'linux_control') } else { @($Suite.ToLowerInvariant()) }
 $probeDirectory = $Suite.ToLowerInvariant() + '-probe'
-$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } }
+$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } }
 foreach ($mode in $modes)
 {
     $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } else { "nativeaot-$mode.nro" }
@@ -88,7 +88,17 @@ foreach ($mode in $modes)
     }
     $observed = @([regex]::Matches($logText, ('\[' + $prefix + '\] ([^\r\n]+)')) |
         ForEach-Object { $_.Groups[1].Value })
-    $required = if ($Suite -eq 'Memory')
+    $required = if ($Suite -eq 'System')
+    {
+        @('begin=1', 'mapping.protection=1', 'mapping.release=1', 'monitor.timeout=1',
+          'monitor.signal=1', 'time.monotonic=1', 'random.sanity=1', 'pass=1')
+    }
+    elseif ($Suite -eq 'Threads')
+    {
+        @('begin=1', 'stack.bounds=1', 'thread.pause=1', 'thread.stopped_context=1',
+          'thread.resume=1', 'thread.rendezvous=1', 'thread.exit_callback=1', 'system.info=1', 'pass=1')
+    }
+    elseif ($Suite -eq 'Memory')
     {
         @('begin=1', 'memory.reserve=1', 'memory.repeat_commit=1', 'memory.bounds=1',
           'memory.recommit_zero=1', 'memory.commit_rollback=1', 'memory.release=1', 'memory.checks=1',
