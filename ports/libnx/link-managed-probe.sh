@@ -37,11 +37,12 @@ cp "$repo_root/THIRD-PARTY-NOTICES.TXT" "$output/licenses/dotnet-third-party-not
 cp "$repo_root/src/native/external/zlib-ng/LICENSE.md" "$output/licenses/zlib-ng.txt"
 cp "$repo_root/src/native/external/brotli/LICENSE" "$output/licenses/brotli.txt"
 cp "$DEVKITPRO/portlibs/switch/licenses/switch-mbedtls/LICENSE" "$output/licenses/mbedtls.txt"
-probe_licenses="$(dirname -- "$LIBNX_PROBE_HOST")/../licenses"
-if [[ -d "$probe_licenses" ]]; then
-    for license in "$probe_licenses"/*; do
-        if [[ -f "$license" ]]; then
-            cp "$license" "$output/licenses/"
-        fi
-    done
-fi
+for probe_licenses in "$(dirname -- "$LIBNX_PROBE_HOST")/../licenses" "${LIBNX_EXTRA_LICENSES:-}"; do
+    if [[ -d "$probe_licenses" ]]; then
+        for license in "$probe_licenses"/*; do
+            if [[ -f "$license" ]]; then
+                cp "$license" "$output/licenses/"
+            fi
+        done
+    fi
+done
