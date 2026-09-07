@@ -103,6 +103,11 @@ int main(void)
         LibnxSleep(1);
     if (__atomic_load_n(&s_ready, __ATOMIC_ACQUIRE) != 1)
         return 3;
+    uint64_t cpuBefore = 0, cpuAfter = 0;
+    bool cpuTicks = LibnxGetRuntimeCpuTicks(&cpuBefore);
+    LibnxSleep(20);
+    cpuTicks = cpuTicks && LibnxGetRuntimeCpuTicks(&cpuAfter) && cpuAfter > cpuBefore;
+    Record("thread.cpu_ticks", cpuTicks);
     ThreadContext context;
     Record("thread.pause_requested", 1);
     bool paused = LibnxThreadPause(&s_workerOwner, &context);
@@ -129,11 +134,14 @@ int main(void)
     threadWaitForExit(&worker);
     threadClose(&worker);
     bool exited = __atomic_load_n(&s_exited, __ATOMIC_ACQUIRE) == 1;
+    uint64_t cpuAfterExit = 0;
+    cpuTicks = cpuTicks && LibnxGetRuntimeCpuTicks(&cpuAfterExit) && cpuAfterExit >= cpuAfter;
+    Record("thread.cpu_ticks_after_exit", cpuTicks);
     Record("thread.exit_callback", exited);
     uint64_t total, available;
     bool info = LibnxHeapInfo(&total, &available) && total && available <= total && LibnxCpuCount();
     Record("system.info", info);
     bool reaped = ReaperChecks();
-    Record("pass", stack && paused && stopped && resumed && rendezvous && exited && info && reaped);
+    Record("pass", stack && paused && stopped && resumed && rendezvous && exited && info && reaped && cpuTicks);
     return 0;
 }

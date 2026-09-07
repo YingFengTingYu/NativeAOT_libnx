@@ -11,6 +11,7 @@
 #include <minipal/time.h>
 #include "pal_threading.h"
 #include "pal_time.h"
+#include "pal_datetime.h"
 #include "pal_io.h"
 #include "pal_log.h"
 #include "pal_random.h"
@@ -53,6 +54,36 @@ int32_t SystemNative_CreateThread(uintptr_t stackSize, void* (*startAddress)(voi
 int32_t SystemNative_SchedGetCpu(void) { return svcGetCurrentProcessorNumber(); }
 int64_t SystemNative_GetTimestamp(void) { return minipal_hires_ticks(); }
 int64_t SystemNative_GetLowResolutionTimestamp(void) { return minipal_lowres_ticks(); }
+int64_t SystemNative_GetSystemTimeAsTicks(void)
+{
+    struct timespec time;
+    if (clock_gettime(CLOCK_REALTIME, &time) != 0)
+        return 0;
+    return (int64_t)time.tv_sec * 10000000 + time.tv_nsec / 100;
+}
+double SystemNative_GetCpuUtilization(ProcessCpuInformation* previous)
+{
+    // Estimate the pool's CPU load from registered runtime threads, retaining
+    // counts after their exit. Unregistered native threads are not included.
+    uint64_t busy;
+    uint64_t now = armGetSystemTick();
+    if (!LibnxGetRuntimeCpuTicks(&busy))
+    {
+        memset(previous, 0, sizeof(*previous));
+        return 0; // Same unavailable-sample fallback as the Unix implementation.
+    }
+    double utilization = 0;
+    if (previous->lastRecordedCurrentTime != 0 && now > previous->lastRecordedCurrentTime &&
+        busy >= previous->lastRecordedUserTime)
+    {
+        utilization = 100.0 * (double)(busy - previous->lastRecordedUserTime) /
+                      (double)(now - previous->lastRecordedCurrentTime);
+    }
+    previous->lastRecordedCurrentTime = now;
+    previous->lastRecordedUserTime = busy;
+    previous->lastRecordedKernelTime = 0;
+    return utilization;
+}
 void SystemNative_LogError(uint8_t* buffer, int32_t length)
 {
     if (buffer && length > 0)

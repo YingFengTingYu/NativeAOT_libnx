@@ -34,6 +34,16 @@ static uint32_t s_ownedReaped;
 #endif
 static int s_tlsSlot = -1;
 static _Thread_local Result s_threadError;
+static uint64_t s_retiredCpuTicks;
+static bool s_cpuTicksValid = true;
+
+static bool ReadThreadCpuTicks(Handle handle, uint64_t* ticks)
+{
+    Result result = svcGetInfo(ticks, InfoType_ThreadTickCount, handle, TickCountInfo_Total);
+    if (R_FAILED(result))
+        result = svcGetInfo(ticks, InfoType_ThreadTickCountDeprecated, handle, TickCountInfo_Total);
+    return R_SUCCEEDED(result);
+}
 
 static void ThreadExit(void* value)
 {
@@ -41,6 +51,11 @@ static void ThreadExit(void* value)
     if (entry->onExit)
         entry->onExit(entry->owner);
     mutexLock(&s_attachedLock);
+    uint64_t ticks;
+    if (ReadThreadCpuTicks(entry->handle, &ticks))
+        s_retiredCpuTicks += ticks;
+    else
+        s_cpuTicksValid = false;
     AttachedThread** current = &s_attached;
     while (*current && *current != entry)
         current = &(*current)->next;
@@ -288,4 +303,22 @@ void LibnxThreadTestCounts(uint32_t* started, uint32_t* reaped)
 uint32_t LibnxThreadLastError(void)
 {
     return s_threadError;
+}
+
+bool LibnxGetRuntimeCpuTicks(uint64_t* ticks)
+{
+    mutexLock(&s_attachedLock);
+    uint64_t total = s_retiredCpuTicks;
+    bool valid = s_cpuTicksValid;
+    for (AttachedThread* entry = s_attached; valid && entry; entry = entry->next)
+    {
+        uint64_t current;
+        valid = ReadThreadCpuTicks(entry->handle, &current);
+        if (valid)
+            total += current;
+    }
+    mutexUnlock(&s_attachedLock);
+    if (valid)
+        *ticks = total;
+    return valid;
 }

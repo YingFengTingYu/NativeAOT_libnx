@@ -36,6 +36,7 @@ bool LibnxFlushThreadWrites(void);
 bool LibnxGetStackBounds(void** low, void** high);
 bool LibnxStartThread(uint32_t (*callback)(void*), void* argument, size_t stackSize);
 uint32_t LibnxThreadLastError(void);
+bool LibnxGetRuntimeCpuTicks(uint64_t* ticks);
 #ifdef LIBNX_THREAD_TESTING
 void LibnxThreadTestCounts(uint32_t* started, uint32_t* reaped);
 #endif
