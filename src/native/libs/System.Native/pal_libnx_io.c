@@ -175,12 +175,9 @@ int32_t SystemNative_Write(intptr_t fd, const void* buffer, int32_t size)
     return result;
 }
 
-static int32_t PositionedIo(intptr_t fd, void* buffer, int32_t size, int64_t offset, bool writing)
+static int64_t PositionedIoLocked(intptr_t fd, void* buffer, size_t size, int64_t offset, bool writing)
 {
-    if (size < 0 || offset < 0) { errno = EINVAL; return -1; }
-    if (!ValidDescriptor(fd)) return -1;
-    mutexLock(&s_positionLock);
-    int32_t result = -1;
+    int64_t result = -1;
     off_t saved = lseek((int)fd, 0, SEEK_CUR);
     if (saved >= 0 && lseek((int)fd, offset, SEEK_SET) >= 0)
     {
@@ -191,6 +188,14 @@ static int32_t PositionedIo(intptr_t fd, void* buffer, int32_t size, int64_t off
         else
             errno = operationError;
     }
+    return result;
+}
+static int32_t PositionedIo(intptr_t fd, void* buffer, int32_t size, int64_t offset, bool writing)
+{
+    if (size < 0 || offset < 0) { errno = EINVAL; return -1; }
+    if (!ValidDescriptor(fd)) return -1;
+    mutexLock(&s_positionLock);
+    int32_t result = PositionedIoLocked(fd, buffer, (size_t)size, offset, writing);
     mutexUnlock(&s_positionLock);
     return result;
 }
@@ -201,6 +206,53 @@ int32_t SystemNative_PRead(intptr_t fd, void* buffer, int32_t size, int64_t offs
 int32_t SystemNative_PWrite(intptr_t fd, void* buffer, int32_t size, int64_t offset)
 {
     return PositionedIo(fd, buffer, size, offset, true);
+}
+
+static int64_t PositionedVectorIo(intptr_t fd, IOVector* vectors, int32_t count, int64_t offset, bool writing)
+{
+    if (count < 0 || count > 1024 || offset < 0 || (count > 0 && !vectors))
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!ValidDescriptor(fd)) return -1;
+    uint64_t requested = 0;
+    for (int32_t index = 0; index < count; index++)
+    {
+        if (vectors[index].Count > (uint64_t)INT64_MAX - (uint64_t)offset - requested)
+        {
+            errno = EOVERFLOW;
+            return -1;
+        }
+        requested += vectors[index].Count;
+    }
+    mutexLock(&s_positionLock);
+    int64_t total = 0;
+    if (count == 0 && lseek((int)fd, 0, SEEK_CUR) < 0)
+        total = -1;
+    for (int32_t index = 0; index < count; index++)
+    {
+        int64_t completed = PositionedIoLocked(fd, vectors[index].Base, vectors[index].Count, offset + total, writing);
+        if (completed < 0)
+        {
+            if (total == 0)
+                total = -1;
+            break;
+        }
+        total += completed;
+        if ((uint64_t)completed < vectors[index].Count)
+            break;
+    }
+    mutexUnlock(&s_positionLock);
+    return total;
+}
+int64_t SystemNative_PReadV(intptr_t fd, IOVector* vectors, int32_t count, int64_t offset)
+{
+    return PositionedVectorIo(fd, vectors, count, offset, false);
+}
+int64_t SystemNative_PWriteV(intptr_t fd, IOVector* vectors, int32_t count, int64_t offset)
+{
+    return PositionedVectorIo(fd, vectors, count, offset, true);
 }
 
 int32_t SystemNative_MkDir(const char* path, int32_t mode)

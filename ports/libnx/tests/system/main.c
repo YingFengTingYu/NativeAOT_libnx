@@ -6,6 +6,7 @@
 #include "pal_io.h"
 #include "pal_threading.h"
 #include "pal_time.h"
+#include "pal_datetime.h"
 #include "pal_random.h"
 
 u32 __nx_applet_type = AppletType_None;
@@ -57,6 +58,21 @@ static bool FileChecks(void)
              (status.Mode & PAL_S_IFMT) == PAL_S_IFREG &&
              SystemNative_FTruncate(fd, 8) == 0 && SystemNative_FStat(fd, &status) == 0 && status.Size == 8;
     Record("file.truncate", passed);
+    uint8_t first[2] = {0}, second[3] = {0};
+    IOVector vectors[2] = { { first, sizeof(first) }, { second, sizeof(second) } };
+    passed = passed && SystemNative_PReadV(fd, vectors, 2, 1) == 5 && first[0] == 2 && first[1] == 3 &&
+             second[0] == 4 && second[2] == 6 && SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 6;
+    first[0] = 0xA1; first[1] = 0xA2;
+    second[0] = 0xB1; second[1] = 0xB2; second[2] = 0xB3;
+    passed = passed && SystemNative_PWriteV(fd, vectors, 2, 1) == 5 &&
+             SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 6;
+    uint8_t combined[8], expected[8] = { 1, 0xA1, 0xA2, 0xB1, 0xB2, 0xB3, 7, 8 };
+    passed = passed && SystemNative_PRead(fd, combined, sizeof(combined), 0) == sizeof(combined) &&
+             memcmp(combined, expected, sizeof(expected)) == 0 &&
+             SystemNative_PReadV(fd, vectors, 2, 7) == 1 && first[0] == 8 &&
+             SystemNative_PReadV(fd, NULL, 0, 0) == 0 &&
+             SystemNative_PReadV(fd, vectors, 2, INT64_MAX) == -1 && errno == EOVERFLOW;
+    Record("file.vector_io", passed);
     passed = passed && SystemNative_PRead(fd, readback, 1, -1) == -1 && errno == EINVAL &&
              SystemNative_ConvertErrorPlatformToPal(ENOENT) == Error_ENOENT &&
              SystemNative_ConvertErrorPalToPlatform(Error_EEXIST) == EEXIST;
@@ -117,6 +133,10 @@ int main(void)
     int64_t before = SystemNative_GetTimestamp();
     svcSleepThread(10000000);
     bool time = SystemNative_GetTimestamp() > before && SystemNative_GetLowResolutionTimestamp() > 0;
+    int64_t utcTicks = SystemNative_GetSystemTimeAsTicks();
+    struct timespec realtime;
+    time = time && clock_gettime(CLOCK_REALTIME, &realtime) == 0 &&
+           utcTicks / 10000000 <= realtime.tv_sec && realtime.tv_sec - utcTicks / 10000000 <= 1;
     Record("time.monotonic", time);
     uint8_t first[32], second[32];
     SystemNative_GetNonCryptographicallySecureRandomBytes(first, sizeof(first));

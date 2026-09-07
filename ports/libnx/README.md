@@ -16,6 +16,8 @@
 
 中文文件名、FileStream 和同一句柄上的并发定位读取见 [第十四轮](results/2026-09-07-round14.md)。
 
+线程池、Task、计时器、取消和异步文件读写见 [第十五轮](results/2026-09-07-round15.md)。
+
 - 上游：`https://github.com/dotnet/runtime.git`
 - 标记：`v10.0.11`
 - runtime 提交：`79d0c463f1b55624c874a11585f7e47731e8d675`
