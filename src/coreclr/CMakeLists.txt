@@ -64,6 +64,12 @@ include(pgosupport.cmake)
 #---------------------------------------------------
 include(components.cmake)
 
+option(CLR_CMAKE_NATIVEAOT_ONLY "Configure NativeAOT without the CoreCLR host and JIT" OFF)
+if(CLR_CMAKE_NATIVEAOT_ONLY)
+  include(nativeaot/only.cmake)
+  return()
+endif()
+
 #---------------------------
 # Build the single file host
 #---------------------------

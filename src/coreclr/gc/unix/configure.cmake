@@ -69,6 +69,13 @@ int main(int argc, char **argv) {
   return 0;
 }" HAVE_CPUSET_T)
 
+if(CLR_CMAKE_TARGET_LIBNX)
+  # Horizon has no /proc filesystem. Keep the optional scheduler fast path
+  # disabled until its runtime use has been validated on this target.
+  set(HAVE_PROCFS_STATM 0)
+  set(HAVE_SCHED_GETCPU 0)
+endif()
+
 check_cxx_source_runs("
     #include <sched.h>
 
