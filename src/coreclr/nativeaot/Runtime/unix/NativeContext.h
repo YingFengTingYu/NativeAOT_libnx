@@ -4,10 +4,19 @@
 #ifndef __NATIVE_CONTEXT_H__
 #define __NATIVE_CONTEXT_H__
 
+#if defined(TARGET_LIBNX)
+#include <switch/arm/thread_context.h>
+struct NativeContextStorage
+{
+    ThreadContext uc_mcontext;
+};
+#else
 #if HAVE_UCONTEXT_H
 #include <ucontext.h>
 #else
 #include <signal.h>
+#endif
+using NativeContextStorage = ucontext_t;
 #endif
 
 // Convert Unix native context to PAL_LIMITED_CONTEXT
@@ -25,7 +34,7 @@ uint64_t GetPC(void* context);
 
 struct NATIVE_CONTEXT
 {
-    ucontext_t ctx;
+    NativeContextStorage ctx;
 
 #ifdef TARGET_ARM64
 
@@ -69,6 +78,10 @@ struct NATIVE_CONTEXT
     template <typename F>
     void ForEachPossibleObjectRef(F lambda)
     {
+#if defined(TARGET_LIBNX)
+        for (int index = 0; index < 29; index++)
+            lambda((size_t*)&ctx.uc_mcontext.cpu_gprs[index].x);
+#else
         // it is doubtful anyone would implement X0-X28 not as a contiguous array
         // just in case - here are some asserts.
         ASSERT(&X0() + 1 == &X1());
@@ -77,6 +90,7 @@ struct NATIVE_CONTEXT
 
         for (uint64_t* pReg = &X0(); pReg <= &X28(); pReg++)
             lambda((size_t*)pReg);
+#endif
 
         // Lr can be used as a scratch register
         lambda((size_t*)&Lr());

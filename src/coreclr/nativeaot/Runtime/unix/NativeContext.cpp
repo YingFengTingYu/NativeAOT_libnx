@@ -12,7 +12,43 @@
 
 #include "NativeContext.h"
 
-#ifdef __APPLE__
+#if defined(TARGET_LIBNX)
+
+#define MCREG_X0(mc) ((mc).cpu_gprs[0].x)
+#define MCREG_X1(mc) ((mc).cpu_gprs[1].x)
+#define MCREG_X2(mc) ((mc).cpu_gprs[2].x)
+#define MCREG_X3(mc) ((mc).cpu_gprs[3].x)
+#define MCREG_X4(mc) ((mc).cpu_gprs[4].x)
+#define MCREG_X5(mc) ((mc).cpu_gprs[5].x)
+#define MCREG_X6(mc) ((mc).cpu_gprs[6].x)
+#define MCREG_X7(mc) ((mc).cpu_gprs[7].x)
+#define MCREG_X8(mc) ((mc).cpu_gprs[8].x)
+#define MCREG_X9(mc) ((mc).cpu_gprs[9].x)
+#define MCREG_X10(mc) ((mc).cpu_gprs[10].x)
+#define MCREG_X11(mc) ((mc).cpu_gprs[11].x)
+#define MCREG_X12(mc) ((mc).cpu_gprs[12].x)
+#define MCREG_X13(mc) ((mc).cpu_gprs[13].x)
+#define MCREG_X14(mc) ((mc).cpu_gprs[14].x)
+#define MCREG_X15(mc) ((mc).cpu_gprs[15].x)
+#define MCREG_X16(mc) ((mc).cpu_gprs[16].x)
+#define MCREG_X17(mc) ((mc).cpu_gprs[17].x)
+#define MCREG_X18(mc) ((mc).cpu_gprs[18].x)
+#define MCREG_X19(mc) ((mc).cpu_gprs[19].x)
+#define MCREG_X20(mc) ((mc).cpu_gprs[20].x)
+#define MCREG_X21(mc) ((mc).cpu_gprs[21].x)
+#define MCREG_X22(mc) ((mc).cpu_gprs[22].x)
+#define MCREG_X23(mc) ((mc).cpu_gprs[23].x)
+#define MCREG_X24(mc) ((mc).cpu_gprs[24].x)
+#define MCREG_X25(mc) ((mc).cpu_gprs[25].x)
+#define MCREG_X26(mc) ((mc).cpu_gprs[26].x)
+#define MCREG_X27(mc) ((mc).cpu_gprs[27].x)
+#define MCREG_X28(mc) ((mc).cpu_gprs[28].x)
+#define MCREG_Fp(mc) ((mc).fp)
+#define MCREG_Lr(mc) ((mc).lr)
+#define MCREG_Sp(mc) ((mc).sp)
+#define MCREG_Pc(mc) ((mc).pc.x)
+
+#elif defined(__APPLE__)
 
 #ifdef HOST_ARM64
 
@@ -661,7 +697,7 @@
 // Convert Unix native context to PAL_LIMITED_CONTEXT
 void NativeContextToPalContext(const void* context, PAL_LIMITED_CONTEXT* palContext)
 {
-    ucontext_t *nativeContext = (ucontext_t*)context;
+    NativeContextStorage *nativeContext = (NativeContextStorage*)context;
 #define ASSIGN_REG(regNative, regPal) palContext->regPal = MCREG_##regNative(nativeContext->uc_mcontext);
     ASSIGN_CONTROL_REGS
     ASSIGN_INTEGER_REGS
@@ -671,7 +707,7 @@ void NativeContextToPalContext(const void* context, PAL_LIMITED_CONTEXT* palCont
 // Redirect Unix native context to the PAL_LIMITED_CONTEXT and also set the first two argument registers
 void RedirectNativeContext(void* context, const PAL_LIMITED_CONTEXT* palContext, uintptr_t arg0Reg, uintptr_t arg1Reg)
 {
-    ucontext_t *nativeContext = (ucontext_t*)context;
+    NativeContextStorage *nativeContext = (NativeContextStorage*)context;
 
 #define ASSIGN_REG(regNative, regPal) MCREG_##regNative(nativeContext->uc_mcontext) = palContext->regPal;
     ASSIGN_CONTROL_REGS
@@ -690,7 +726,7 @@ void RedirectNativeContext(void* context, const PAL_LIMITED_CONTEXT* palContext,
 //                   R12 = 12, R13 = 13, R14 = 14, R15 = 15
 uint64_t GetRegisterValueByIndex(void* context, uint32_t index)
 {
-    ucontext_t *nativeContext = (ucontext_t*)context;
+    NativeContextStorage *nativeContext = (NativeContextStorage*)context;
     switch (index)
     {
         case 0:
@@ -734,7 +770,7 @@ uint64_t GetRegisterValueByIndex(void* context, uint32_t index)
 // Get value of the program counter from the native context
 uint64_t GetPC(void* context)
 {
-    ucontext_t *nativeContext = (ucontext_t*)context;
+    NativeContextStorage *nativeContext = (NativeContextStorage*)context;
     return MCREG_Rip(nativeContext->uc_mcontext);
 }
 

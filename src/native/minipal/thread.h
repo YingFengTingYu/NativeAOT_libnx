@@ -20,6 +20,15 @@
 #include <lwp.h>
 #elif defined(__HAIKU__)
 #include <kernel/OS.h>
+#elif defined(HOST_LIBNX)
+#include <errno.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include <switch/kernel/svc.h>
+#ifdef __cplusplus
+}
+#endif
 #endif
 
 #ifdef PTHREAD_MAX_NAMELEN_NP
@@ -50,7 +59,12 @@ static inline size_t minipal_get_current_thread_id_no_cache(void)
     tid = 1; // In non-reentrant WASM builds, we define a single thread with ID 1.
 #else // !__wasm || _REENTRANT
 
-#if defined(__linux__)
+#if defined(HOST_LIBNX)
+    uint64_t thread_id;
+    if (svcGetThreadId(&thread_id, CUR_THREAD_HANDLE) != 0)
+        abort();
+    tid = (size_t)thread_id;
+#elif defined(__linux__)
     tid = (size_t)syscall(SYS_gettid);
 #elif defined(__APPLE__)
     uint64_t thread_id;
@@ -111,7 +125,12 @@ static inline size_t minipal_get_current_thread_id(void)
  */
 static inline int minipal_set_thread_name(pthread_t thread, const char* name)
 {
-#ifdef __wasm
+#if defined(HOST_LIBNX)
+    // Horizon does not expose the pthread thread-name operation.
+    (void)thread;
+    (void)name;
+    return ENOTSUP;
+#elif defined(__wasm)
     // WASM does not support pthread_setname_np yet: https://github.com/emscripten-core/emscripten/pull/18751
     return 0;
 #else

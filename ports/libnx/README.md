@@ -2,7 +2,7 @@
 
 本分支基于公开的 `dotnet/runtime`，目标是直接使用 devkitPro/libnx 构建 Nintendo Switch homebrew。当前处于源码构建与 ABI 验证阶段，尚未实现可运行的 NativeAOT/libnx 运行时。
 
-已完成的实验与限制见 [第二轮记录](results/2026-09-07-round2.md)。
+已完成的实验与限制见 [第二轮](results/2026-09-07-round2.md)、[第三轮](results/2026-09-07-round3.md) 和 [第四轮](results/2026-09-07-round4.md) 记录。
 
 ## 固定基线
 
@@ -60,6 +60,6 @@ docker run --rm -v "$PWD:/runtime" nativeaot-libnx-build:10.0.11 bash ports/libn
 docker run --rm -v "$PWD:/runtime" nativeaot-libnx-build:10.0.11 bash ports/libnx/configure-runtime.sh
 ```
 
-第一个命令验证实际编译宏和目标文件架构。第二个命令目前预期返回非零：上游 CoreCLR 配置还会进入 `Corehost.Static`，请求 libnx 没有的 GSS/Kerberos 原生依赖。由于工具链限制目标库搜索范围，它不会误用宿主 Linux 的 `libkrb5-dev`。诊断保存在 `artifacts/log/libnx/cross-configure.log`。
+第一个命令验证实际编译宏、目标文件架构以及 API 链接检测。第二个命令使用第三轮新增的 NativeAOT 独立入口，目前已经配置成功，不再进入 CoreCLR 宿主的 GSS/Kerberos 依赖。诊断保存在 `artifacts/log/libnx/cross-configure.log`。
 
-下一步需要为 NativeAOT 整理独立于 CoreCLR 宿主的原生构建依赖，并继续实现 libnx 平台层；当前不能发布完整 libnx runtime-pack。
+执行 `bash ports/libnx/build-runtime.sh` 可继续编译实际运行时；当前仍有 Unix 平台实现需要替换，尚不能发布完整 libnx runtime-pack。

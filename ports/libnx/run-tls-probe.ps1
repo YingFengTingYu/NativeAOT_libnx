@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$EdenPath
+    [string]$EdenPath,
+    [ValidateSet('Tls', 'Context')]
+    [string]$Suite = 'Tls'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,9 +58,13 @@ flush_line=true
 [System.IO.File]::WriteAllText($configPath, $config, [System.Text.UTF8Encoding]::new($false))
 
 $allPassed = $true
-foreach ($mode in @('libnx', 'linux_control'))
+$modes = if ($Suite -eq 'Tls') { @('libnx', 'linux_control') } else { @('context') }
+$probeDirectory = if ($Suite -eq 'Tls') { 'tls-probe' } else { 'context-probe' }
+$prefix = if ($Suite -eq 'Tls') { 'AOTTLS' } else { 'AOTCTX' }
+foreach ($mode in $modes)
 {
-    $nro = Join-Path $outputRoot "tls-probe/nativeaot-tls-$mode.nro"
+    $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } else { 'nativeaot-context.nro' }
+    $nro = Join-Path $outputRoot "$probeDirectory/$nroName"
     $nro = (Resolve-Path -LiteralPath $nro).Path
     $emulatorLog = Join-Path $profileRoot 'log/eden_log.txt'
     if (Test-Path -LiteralPath $emulatorLog)
@@ -74,15 +80,19 @@ foreach ($mode in @('libnx', 'linux_control'))
         $process.WaitForExit()
     }
     $logText = ''
-    $savedLog = Join-Path $outputRoot "tls-probe/$mode-eden.log"
+    $savedLog = Join-Path $outputRoot "$probeDirectory/$mode-eden.log"
     if (Test-Path -LiteralPath $emulatorLog)
     {
         Copy-Item -LiteralPath $emulatorLog -Destination $savedLog -Force
         $logText = [System.IO.File]::ReadAllText($savedLog)
     }
-    $observed = @([regex]::Matches($logText, '\[AOTTLS\] ([^\r\n]+)') |
+    $observed = @([regex]::Matches($logText, ('\[' + $prefix + '\] ([^\r\n]+)')) |
         ForEach-Object { $_.Groups[1].Value })
-    $required = if ($mode -eq 'libnx')
+    $required = if ($Suite -eq 'Context')
+    {
+        @('begin=1', 'context.checks=1', 'thread.ids=1', 'pass=1')
+    }
+    elseif ($mode -eq 'libnx')
     {
         @('begin=1', 'libnx.target=1', 'main.address_and_registers=1',
           'workers.isolated=1', 'main.unchanged=1', 'pass=1')
@@ -106,12 +116,12 @@ foreach ($mode in @('libnx', 'linux_control'))
         Markers = $observed
         MissingMarkers = $missing
     }
-    $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $outputRoot "tls-probe/$mode-result.json") -Encoding utf8NoBOM
+    $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $outputRoot "$probeDirectory/$mode-result.json") -Encoding utf8NoBOM
     Write-Output "$mode : TestPassed=$passed"
-    $observed | ForEach-Object { Write-Output "  [AOTTLS] $_" }
+    $observed | ForEach-Object { Write-Output "  [$prefix] $_" }
     $allPassed = $allPassed -and $passed
 }
 if (-not $allPassed)
 {
-    throw 'TLS 模拟器对照测试未通过，检查 artifacts/libnx/tls-probe 内的日志。'
+    throw "模拟器测试未通过，检查 artifacts/libnx/$probeDirectory 内的日志。"
 }
