@@ -143,7 +143,14 @@ int main(void)
     SystemNative_GetNonCryptographicallySecureRandomBytes(second, sizeof(second));
     bool random = memcmp(first, second, sizeof(first)) != 0;
     Record("random.sanity", random);
+    bool secureRandom = SystemNative_GetCryptographicallySecureRandomBytes(NULL, 0) == 0 &&
+                        SystemNative_GetCryptographicallySecureRandomBytes(NULL, 1) == -1 && errno == EINVAL &&
+                        SystemNative_GetCryptographicallySecureRandomBytes(first, -1) == -1 && errno == EINVAL &&
+                        SystemNative_GetCryptographicallySecureRandomBytes(first, sizeof(first)) == 0 &&
+                        SystemNative_GetCryptographicallySecureRandomBytes(second, sizeof(second)) == 0 &&
+                        memcmp(first, second, sizeof(first)) != 0;
+    Record("random.csrng_interface", secureRandom);
     bool files = FileChecks();
-    Record("pass", unmapped && timeout && time && random && files);
+    Record("pass", unmapped && timeout && time && random && secureRandom && files);
     return 0;
 }

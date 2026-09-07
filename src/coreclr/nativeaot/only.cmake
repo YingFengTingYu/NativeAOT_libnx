@@ -23,8 +23,10 @@ if(CLR_CMAKE_TARGET_LIBNX)
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native" "${CMAKE_CURRENT_BINARY_DIR}/system-native-config")
   target_link_libraries(System.Native PRIVATE aotminipal)
   add_library(System.Security.Cryptography.Native.Libnx STATIC
-    "${CLR_SRC_NATIVE_DIR}/libs/System.Security.Cryptography.Native.Libnx/pal_digest.c")
+    "${CLR_SRC_NATIVE_DIR}/libs/System.Security.Cryptography.Native.Libnx/pal_digest.c"
+    "${CLR_SRC_NATIVE_DIR}/libs/System.Security.Cryptography.Native.Libnx/pal_random.c")
   target_include_directories(System.Security.Cryptography.Native.Libnx PRIVATE
+    "${CLR_SRC_NATIVE_DIR}/libs/Common"
     "${LIBNX_DEVKITPRO}/portlibs/switch/include")
   target_link_libraries(System.Security.Cryptography.Native.Libnx PRIVATE
     "${LIBNX_DEVKITPRO}/portlibs/switch/lib/libmbedcrypto.a")

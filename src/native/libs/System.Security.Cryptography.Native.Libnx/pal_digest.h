@@ -8,6 +8,7 @@ typedef mbedtls_md_info_t DigestType;
 typedef struct DigestContext DigestContext;
 
 int32_t CryptoNative_EnsureOpenSslInitialized(void);
+int32_t CryptoNative_GetRandomBytes(uint8_t* buffer, int32_t size);
 const DigestType* CryptoNative_EvpMd5(void);
 const DigestType* CryptoNative_EvpSha1(void);
 const DigestType* CryptoNative_EvpSha256(void);

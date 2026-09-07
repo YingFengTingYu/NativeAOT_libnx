@@ -97,6 +97,43 @@ void SystemNative_GetNonCryptographicallySecureRandomBytes(uint8_t* buffer, int3
         randomGet(buffer, length);
 }
 
+static Mutex s_secureRandomLock;
+static bool s_secureRandomReady;
+int32_t SystemNative_GetCryptographicallySecureRandomBytes(uint8_t* buffer, int32_t length)
+{
+    if (length < 0 || (length > 0 && !buffer))
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    if (length == 0)
+        return 0;
+    mutexLock(&s_secureRandomLock);
+    Result result = 0;
+    if (!s_secureRandomReady)
+    {
+        result = csrngInitialize();
+        s_secureRandomReady = R_SUCCEEDED(result);
+    }
+    for (int32_t offset = 0; R_SUCCEEDED(result) && offset < length;)
+    {
+        size_t count = (size_t)(length - offset);
+        if (count > 0x1000)
+            count = 0x1000;
+        result = csrngGetRandomBytes(buffer + offset, count);
+        offset += (int32_t)count;
+    }
+    mutexUnlock(&s_secureRandomLock);
+    if (R_FAILED(result))
+    {
+        // Never replace a failed secure source with the non-cryptographic RNG.
+        memset(buffer, 0, (size_t)length);
+        errno = EIO;
+        return -1;
+    }
+    return 0;
+}
+
 struct LowLevelMonitor
 {
     pthread_mutex_t mutex;
