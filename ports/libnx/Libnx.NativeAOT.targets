@@ -4,5 +4,11 @@
        is implemented. This does not disable thread statics themselves. -->
   <ItemGroup>
     <IlcArg Include="--noinlinetls" />
+    <IlcArg Include="--jitpath:$(LibnxJitPath)" Condition="'$(LibnxJitPath)' != ''" />
+    <IlcArg Include="--codegenopt:LibnxLoopGcPolls=1" Condition="'$(LibnxLoopGcPolls)' == 'true'" />
   </ItemGroup>
+  <Target Name="ValidateLibnxLoopGcPolls" BeforeTargets="IlcCompile">
+    <Error Condition="'$(LibnxLoopGcPolls)' == 'true' and '$(LibnxJitPath)' == ''"
+           Text="LibnxLoopGcPolls requires LibnxJitPath to the patched ARM64 code generator." />
+  </Target>
 </Project>

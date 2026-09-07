@@ -111,6 +111,9 @@ CONFIG_INTEGER(JitForceFallback, "JitForceFallback", 0) // Set to non-zero to te
 CONFIG_INTEGER(JitFullyInt, "JitFullyInt", 0)           // Forces Fully interruptible code
 CONFIG_INTEGER(JitFunctionTrace, "JitFunctionTrace", 0) // If non-zero, print JIT start/end logging
 CONFIG_INTEGER(JitGCChecks, "JitGCChecks", 0)
+// Opt-in NativeAOT/libnx port: return-address hijacking cannot stop a method
+// which stays inside a loop, so give loop backedges cooperative GC polls.
+RELEASE_CONFIG_INTEGER(LibnxLoopGcPolls, "LibnxLoopGcPolls", 0)
 CONFIG_INTEGER(JitGCInfoLogging, "JitGCInfoLogging", 0) // If true, prints GCInfo-related output to standard output.
 CONFIG_INTEGER(JitHashBreak, "JitHashBreak", -1)        // Same as JitBreak, but for a method hash
 CONFIG_INTEGER(JitHashHalt, "JitHashHalt", -1)          // Same as JitHalt, but for a method hash

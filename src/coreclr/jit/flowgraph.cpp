@@ -77,6 +77,29 @@ PhaseStatus Compiler::fgInsertGCPolls()
 {
     PhaseStatus result = PhaseStatus::MODIFIED_NOTHING;
 
+#ifdef TARGET_ARM64
+    if ((JitConfig.LibnxLoopGcPolls() != 0) && (eeGetEEInfo()->targetAbi == CORINFO_NATIVEAOT_ABI))
+    {
+        // Every cycle has an edge to a block whose number is no greater than
+        // the source's. Mark before splitting any blocks; existing poll lowering
+        // supplies the proper EH/GC metadata and runtime helper call.
+        for (BasicBlock* block : Blocks())
+        {
+            if (!block->KindIs(BBJ_ALWAYS, BBJ_COND, BBJ_SWITCH))
+                continue;
+            for (BasicBlock* successor : block->Succs())
+            {
+                if (successor->bbNum <= block->bbNum)
+                {
+                    block->SetFlags(BBF_NEEDS_GCPOLL);
+                    optMethodFlags |= OMF_NEEDS_GCPOLLS;
+                    break;
+                }
+            }
+        }
+    }
+#endif
+
     if ((optMethodFlags & OMF_NEEDS_GCPOLLS) == 0)
     {
         return result;
