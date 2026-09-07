@@ -26,6 +26,45 @@ static void Worker(void* ignored)
     s_ready = true;
     SystemNative_LowLevelMonitor_Signal_Release(s_monitor);
 }
+
+static bool FileChecks(void)
+{
+    DIR* root = opendir("sdmc:/");
+    if (root)
+        closedir(root);
+    else if (fsdevMountSdmc() != 0)
+        return false;
+    const char* path = "/nativeaot-native-position.tmp";
+    intptr_t fd = SystemNative_Open(path, PAL_O_CREAT | PAL_O_TRUNC | PAL_O_RDWR, 0600);
+    if (fd < 0)
+        return false;
+    uint8_t contents[16];
+    for (unsigned index = 0; index < sizeof(contents); index++)
+        contents[index] = index + 1;
+    bool passed = SystemNative_Write(fd, contents, sizeof(contents)) == sizeof(contents) &&
+                  SystemNative_LSeek(fd, 5, PAL_SEEK_SET) == 5;
+    uint8_t readback[4];
+    passed = passed && SystemNative_PRead(fd, readback, sizeof(readback), 8) == sizeof(readback) &&
+             memcmp(readback, contents + 8, sizeof(readback)) == 0 &&
+             SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 5;
+    uint8_t replacement = 0x88;
+    passed = passed && SystemNative_PWrite(fd, &replacement, 1, 12) == 1 &&
+             SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 5 &&
+             SystemNative_Read(fd, readback, 1) == 1 && readback[0] == 6;
+    Record("file.position_preserved", passed);
+    FileStatus status;
+    passed = passed && SystemNative_FStat(fd, &status) == 0 && status.Size == 16 &&
+             (status.Mode & PAL_S_IFMT) == PAL_S_IFREG &&
+             SystemNative_FTruncate(fd, 8) == 0 && SystemNative_FStat(fd, &status) == 0 && status.Size == 8;
+    Record("file.truncate", passed);
+    passed = passed && SystemNative_PRead(fd, readback, 1, -1) == -1 && errno == EINVAL &&
+             SystemNative_ConvertErrorPlatformToPal(ENOENT) == Error_ENOENT &&
+             SystemNative_ConvertErrorPalToPlatform(Error_EEXIST) == EEXIST;
+    bool closed = SystemNative_Close(fd) == 0;
+    bool deleted = SystemNative_Unlink(path) == 0;
+    Record("file.cleanup", closed && deleted);
+    return passed && closed && deleted;
+}
 int main(void)
 {
     Record("begin", 1);
@@ -84,6 +123,7 @@ int main(void)
     SystemNative_GetNonCryptographicallySecureRandomBytes(second, sizeof(second));
     bool random = memcmp(first, second, sizeof(first)) != 0;
     Record("random.sanity", random);
-    Record("pass", unmapped && timeout && time && random);
+    bool files = FileChecks();
+    Record("pass", unmapped && timeout && time && random && files);
     return 0;
 }

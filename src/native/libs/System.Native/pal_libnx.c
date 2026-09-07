@@ -20,8 +20,6 @@ void SystemNative_Abort(void) { abort(); }
 void* SystemNative_Malloc(uintptr_t size) { return malloc(size); }
 void SystemNative_Free(void* memory) { free(memory); }
 char* SystemNative_GetEnv(const char* name) { return getenv(name); }
-int32_t SystemNative_GetErrNo(void) { return errno; }
-void SystemNative_SetErrNo(int32_t error) { errno = error; }
 typedef struct ManagedThreadStart
 {
     void* (*callback)(void*);

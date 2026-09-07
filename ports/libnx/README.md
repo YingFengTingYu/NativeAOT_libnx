@@ -14,6 +14,8 @@
 
 忙循环的编译器 GC 检查点、源码代码生成器构建与正负对照见 [第十三轮](results/2026-09-07-round13.md)。
 
+中文文件名、FileStream 和同一句柄上的并发定位读取见 [第十四轮](results/2026-09-07-round14.md)。
+
 - 上游：`https://github.com/dotnet/runtime.git`
 - 标记：`v10.0.11`
 - runtime 提交：`79d0c463f1b55624c874a11585f7e47731e8d675`

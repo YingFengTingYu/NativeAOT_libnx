@@ -15,7 +15,9 @@ if(CLR_CMAKE_TARGET_LIBNX)
   # Unix implementation. Unprobed optional features remain disabled.
   configure_file("${CLR_SRC_NATIVE_DIR}/libs/Common/pal_config.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/system-native-config/pal_config.h")
-  add_library(System.Native STATIC "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx.c")
+  add_library(System.Native STATIC "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx.c"
+    "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx_io.c"
+    "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_errno.c")
   target_include_directories(System.Native PRIVATE "${CLR_SRC_NATIVE_DIR}/libs/Common"
     "${CMAKE_CURRENT_SOURCE_DIR}/nativeaot/Runtime/libnx"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native" "${CMAKE_CURRENT_BINARY_DIR}/system-native-config")
