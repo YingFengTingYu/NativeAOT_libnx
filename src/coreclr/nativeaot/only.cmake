@@ -17,6 +17,8 @@ if(CLR_CMAKE_TARGET_LIBNX)
     "${CMAKE_CURRENT_BINARY_DIR}/system-native-config/pal_config.h")
   add_library(System.Native STATIC "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx.c"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx_io.c"
+    "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx_console.c"
+    "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_string.c"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_errno.c")
   target_include_directories(System.Native PRIVATE "${CLR_SRC_NATIVE_DIR}/libs/Common"
     "${CMAKE_CURRENT_SOURCE_DIR}/nativeaot/Runtime/libnx"

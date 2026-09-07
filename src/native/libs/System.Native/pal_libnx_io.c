@@ -19,6 +19,7 @@ c_static_assert(SEEK_SET == PAL_SEEK_SET && SEEK_CUR == PAL_SEEK_CUR && SEEK_END
 // position-changing System.Native operations around seek/read-or-write/restore.
 // Sharing these descriptors with concurrent native stdio is not supported yet.
 static Mutex s_positionLock;
+void LibnxInitializeDebugStdio(void);
 
 // The initial host mounts SD at the managed Unix root. Relative paths follow
 // libnx's working directory; explicit device paths remain usable by native code.
@@ -169,6 +170,8 @@ int32_t SystemNative_Write(intptr_t fd, const void* buffer, int32_t size)
 {
     if (size < 0) { errno = EINVAL; return -1; }
     if (!ValidDescriptor(fd)) return -1;
+    if (fd == 1 || fd == 2)
+        LibnxInitializeDebugStdio();
     mutexLock(&s_positionLock);
     int32_t result = write((int)fd, buffer, (size_t)size);
     mutexUnlock(&s_positionLock);
@@ -328,4 +331,26 @@ int32_t SystemNative_GetGroups(int32_t count, uint32_t* groups)
     if (count > 0)
         groups[0] = 0;
     return 1;
+}
+
+int32_t SystemNative_ReadLink(const char* path, char* output, int32_t size)
+{
+    (void)output;
+    if (size < 0) { errno = EINVAL; return -1; }
+    char buffer[FS_MAX_PATH + 8];
+    const char* native = NativePath(path, buffer);
+    if (!native)
+        return -1;
+    struct stat status;
+    if (stat(native, &status) != 0)
+        return -1;
+    errno = EINVAL; // fsdev entries are not symbolic links.
+    return -1;
+}
+int32_t SystemNative_GetPwUidR(uint32_t uid, Passwd* result, char* buffer, int32_t size)
+{
+    (void)uid; (void)buffer;
+    if (!result || size < 0) return EINVAL;
+    memset(result, 0, sizeof(*result));
+    return -1; // This filesystem host has no passwd database.
 }
