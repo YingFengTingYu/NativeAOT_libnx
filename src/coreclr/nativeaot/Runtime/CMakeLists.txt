@@ -192,6 +192,21 @@ else()
   set(ASM_SUFFIX S)
 endif()
 
+if(CLR_CMAKE_TARGET_LIBNX)
+  list(REMOVE_ITEM COMMON_RUNTIME_SOURCES
+    unix/PalUnix.cpp unix/PalCreateDump.cpp
+    ${GC_DIR}/unix/gcenv.unix.cpp ${GC_DIR}/unix/numasupport.cpp
+    ${GC_DIR}/unix/events.cpp ${GC_DIR}/unix/cgroup.cpp)
+  list(REMOVE_ITEM FULL_RUNTIME_SOURCES
+    unix/cgroupcpu.cpp unix/HardwareExceptions.cpp unix/UnixSignals.cpp)
+  list(APPEND COMMON_RUNTIME_SOURCES
+    libnx/PalLibnx.cpp libnx/gcenv.libnx.cpp
+    libnx/HardwareExceptions.cpp
+    libnx/LibnxMemory.c libnx/LibnxEvents.c libnx/LibnxThreads.c libnx/LibnxSystem.c)
+  list(APPEND RUNTIME_SOURCES_ARCH_ASM libnx/ExceptionResume.S)
+  include_directories(libnx)
+endif()
+
 if (CLR_CMAKE_TARGET_APPLE)
   list(APPEND COMMON_RUNTIME_SOURCES
     interoplibinterface_objc.cpp
@@ -291,7 +306,7 @@ if(CLR_CMAKE_TARGET_WIN32)
     add_compile_options($<$<COMPILE_LANGUAGE:ASM_MASM>:/safeseh>)
   endif()
 else()
-  if(NOT CLR_CMAKE_TARGET_APPLE AND NOT CLR_CMAKE_TARGET_ARCH_WASM)
+  if(NOT CLR_CMAKE_TARGET_APPLE AND NOT CLR_CMAKE_TARGET_ARCH_WASM AND NOT CLR_CMAKE_TARGET_LIBNX)
     add_definitions(-DFEATURE_READONLY_GS_COOKIE)
   endif()
   include(unix/configure.cmake)

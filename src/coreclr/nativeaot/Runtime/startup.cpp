@@ -93,7 +93,12 @@ static bool InitDLL(HANDLE hPalInstance)
     // Initialize interface dispatch.
     //
     if (!InterfaceDispatch_Initialize())
+    {
+#ifdef TARGET_LIBNX
+        PalPrintFatalError("[AOTINIT] InterfaceDispatch_Initialize() failed\n");
+#endif
         return false;
+    }
 #endif
 
     InitializeGCEventLock();
@@ -113,13 +118,23 @@ static bool InitDLL(HANDLE hPalInstance)
     // Initialize support for registering GC and HandleTable callouts.
     //
     if (!RestrictedCallouts::Initialize())
+    {
+#ifdef TARGET_LIBNX
+        PalPrintFatalError("[AOTINIT] RestrictedCallouts::Initialize() failed\n");
+#endif
         return false;
+    }
 
     //
     // Initialize RuntimeInstance state
     //
     if (!RuntimeInstance::Initialize(hPalInstance))
+    {
+#ifdef TARGET_LIBNX
+        PalPrintFatalError("[AOTINIT] RuntimeInstance::Initialize(hPalInstance) failed\n");
+#endif
         return false;
+    }
 
     // Note: The global exception handler uses RuntimeInstance
 #if !defined(USE_PORTABLE_HELPERS)
@@ -147,7 +162,12 @@ static bool InitDLL(HANDLE hPalInstance)
     STARTUP_TIMELINE_EVENT(NONGC_INIT_COMPLETE);
 
     if (!InitializeGC())
+    {
+#ifdef TARGET_LIBNX
+        PalPrintFatalError("[AOTINIT] InitializeGC() failed\n");
+#endif
         return false;
+    }
 
     STARTUP_TIMELINE_EVENT(GC_INIT_COMPLETE);
 
@@ -160,12 +180,22 @@ static bool InitDLL(HANDLE hPalInstance)
 
 #ifndef USE_PORTABLE_HELPERS
     if (!DetectCPUFeatures())
+    {
+#ifdef TARGET_LIBNX
+        PalPrintFatalError("[AOTINIT] DetectCPUFeatures() failed\n");
+#endif
         return false;
+    }
 #endif
 
 #ifdef TARGET_UNIX
     if (!InitGSCookie())
+    {
+#ifdef TARGET_LIBNX
+        PalPrintFatalError("[AOTINIT] InitGSCookie() failed\n");
+#endif
         return false;
+    }
 #endif
 
     return true;

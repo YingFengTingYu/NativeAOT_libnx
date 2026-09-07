@@ -187,6 +187,10 @@ extern "C" void __managed__Startup();
 
 static int InitializeRuntime()
 {
+#ifdef TARGET_LIBNX
+    extern void PalPrintFatalError(const char*);
+    PalPrintFatalError("[AOTINIT] begin\n");
+#endif
     if (!RhInitialize(
 #ifdef NATIVEAOT_DLL
         /* isDll */ true
@@ -194,7 +198,15 @@ static int InitializeRuntime()
         /* isDll */ false
 #endif
         ))
+    {
+#ifdef TARGET_LIBNX
+        PalPrintFatalError("[AOTINIT] RhInitialize failed\n");
+#endif
         return -1;
+    }
+#ifdef TARGET_LIBNX
+    PalPrintFatalError("[AOTINIT] RhInitialize passed\n");
+#endif
 
     void * osModule = PalGetModuleHandleFromPointer((void*)&NATIVEAOT_ENTRYPOINT);
 
@@ -205,10 +217,20 @@ static int InitializeRuntime()
         (void*)&__unbox_a, (uint32_t)((char *)&__unbox_z - (char*)&__unbox_a),
         (void **)&c_classlibFunctions, _countof(c_classlibFunctions)))
     {
+#ifdef TARGET_LIBNX
+        PalPrintFatalError("[AOTINIT] RhRegisterOSModule failed\n");
+#endif
         return -1;
     }
 
+#ifdef TARGET_LIBNX
+    PalPrintFatalError("[AOTINIT] module registered\n");
+#endif
+
     InitializeModules(osModule, __modules_a, (int)((__modules_z - __modules_a)), (void **)&c_classlibFunctions, _countof(c_classlibFunctions));
+#ifdef TARGET_LIBNX
+    PalPrintFatalError("[AOTINIT] modules initialized\n");
+#endif
 
 #ifdef NATIVEAOT_DLL
     // Run startup method immediately for a native library
