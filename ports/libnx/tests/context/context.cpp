@@ -4,6 +4,9 @@
 #include <cstring>
 #include "PalLimitedContext.h"
 #include "NativeContext.h"
+#include "CommonTypes.h"
+#include "CommonMacros.h"
+#include "Pal.h"
 #include "minipal/thread.h"
 
 extern "C" uint64_t nx_context_thread_id()
@@ -14,6 +17,10 @@ extern "C" uint64_t nx_context_thread_id()
 
 extern "C" int nx_context_checks()
 {
+    int64_t atomicValue = INT64_C(0x1122334455667788);
+    int64_t previous = PalInterlockedExchange64(&atomicValue, INT64_C(0x7766554433221100));
+    if (previous != INT64_C(0x1122334455667788) || atomicValue != INT64_C(0x7766554433221100))
+        return 8;
     NATIVE_CONTEXT context = {};
     for (int index = 0; index < 29; index++)
         context.ctx.uc_mcontext.cpu_gprs[index].x = 100 + index;
