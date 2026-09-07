@@ -8,6 +8,8 @@
 
 ## 固定基线
 
+线程资源回收及 128 次托管线程生命周期检查见 [第十一轮](results/2026-09-07-round11.md)。
+
 - 上游：`https://github.com/dotnet/runtime.git`
 - 标记：`v10.0.11`
 - runtime 提交：`79d0c463f1b55624c874a11585f7e47731e8d675`

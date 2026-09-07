@@ -8,6 +8,7 @@ u32 __nx_applet_type = AppletType_None;
 static unsigned s_mainOwner, s_workerOwner;
 static unsigned s_ready, s_stop, s_exited;
 static uint64_t s_counter;
+static uint32_t s_ownedExits, s_ownedFailures;
 
 static void Record(const char* name, unsigned long long value)
 {
@@ -29,6 +30,44 @@ static void Worker(void* ignored)
     __atomic_store_n(&s_ready, attached ? 1 : 2, __ATOMIC_RELEASE);
     while (!__atomic_load_n(&s_stop, __ATOMIC_ACQUIRE))
         __atomic_fetch_add(&s_counter, 1, __ATOMIC_RELAXED);
+}
+
+static void OwnedExit(void* owner)
+{
+    if (!owner)
+        __atomic_add_fetch(&s_ownedFailures, 1, __ATOMIC_RELAXED);
+    __atomic_add_fetch(&s_ownedExits, 1, __ATOMIC_RELEASE);
+}
+
+static uint32_t OwnedWorker(void* owner)
+{
+    if (!LibnxThreadAttach(owner, OwnedExit))
+        __atomic_add_fetch(&s_ownedFailures, 1, __ATOMIC_RELAXED);
+    LibnxSleep(1);
+    return 0;
+}
+
+static bool ReaperChecks(void)
+{
+    if (LibnxStartThread(NULL, NULL, 0) || LibnxStartThread(OwnedWorker, NULL, SIZE_MAX))
+        return false;
+    for (uintptr_t index = 1; index <= 64; index++)
+    {
+        if (!LibnxStartThread(OwnedWorker, (void*)index, 0x10001))
+            return false;
+    }
+    uint32_t started = 0, reaped = 0;
+    for (int attempt = 0; attempt < 5000; attempt++)
+    {
+        LibnxThreadTestCounts(&started, &reaped);
+        if (reaped == 64)
+            break;
+        LibnxSleep(1);
+    }
+    Record("thread.owned_started", started);
+    Record("thread.owned_reaped", reaped);
+    Record("thread.owned_exit_callbacks", __atomic_load_n(&s_ownedExits, __ATOMIC_ACQUIRE));
+    return started == 64 && reaped == 64 && s_ownedExits == 64 && s_ownedFailures == 0;
 }
 
 int main(void)
@@ -94,6 +133,7 @@ int main(void)
     uint64_t total, available;
     bool info = LibnxHeapInfo(&total, &available) && total && available <= total && LibnxCpuCount();
     Record("system.info", info);
-    Record("pass", stack && paused && stopped && resumed && rendezvous && exited && info);
+    bool reaped = ReaperChecks();
+    Record("pass", stack && paused && stopped && resumed && rendezvous && exited && info && reaped);
     return 0;
 }

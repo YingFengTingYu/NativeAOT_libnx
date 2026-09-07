@@ -17,6 +17,7 @@ if(CLR_CMAKE_TARGET_LIBNX)
     "${CMAKE_CURRENT_BINARY_DIR}/system-native-config/pal_config.h")
   add_library(System.Native STATIC "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx.c")
   target_include_directories(System.Native PRIVATE "${CLR_SRC_NATIVE_DIR}/libs/Common"
+    "${CMAKE_CURRENT_SOURCE_DIR}/nativeaot/Runtime/libnx"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native" "${CMAKE_CURRENT_BINARY_DIR}/system-native-config")
   target_link_libraries(System.Native PRIVATE aotminipal)
 endif()

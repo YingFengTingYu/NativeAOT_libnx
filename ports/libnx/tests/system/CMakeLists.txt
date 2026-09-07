@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(NativeAotLibnxSystemProbe LANGUAGES C)
 get_filename_component(RUNTIME_REPO "${CMAKE_CURRENT_LIST_DIR}/../../../.." ABSOLUTE)
-add_executable(nativeaot-system main.c)
+add_executable(nativeaot-system main.c "${RUNTIME_REPO}/src/coreclr/nativeaot/Runtime/libnx/LibnxThreads.c")
 target_include_directories(nativeaot-system PRIVATE
     "${RUNTIME_REPO}/src/native"
     "${RUNTIME_REPO}/src/native/libs/Common" "${RUNTIME_REPO}/src/native/libs/System.Native"

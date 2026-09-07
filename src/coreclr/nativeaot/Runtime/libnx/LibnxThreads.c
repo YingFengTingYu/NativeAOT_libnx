@@ -23,7 +23,15 @@ typedef struct OwnedThread
 static Mutex s_attachedLock;
 static Mutex s_ownedLock;
 static AttachedThread* s_attached;
-static OwnedThread* s_owned;
+static CondVar s_finishedCondition;
+static OwnedThread* s_finished;
+static OwnedThread** s_finishedTail = &s_finished;
+static Thread s_reaper;
+static bool s_reaperStarted;
+#ifdef LIBNX_THREAD_TESTING
+static uint32_t s_ownedStarted;
+static uint32_t s_ownedReaped;
+#endif
 static int s_tlsSlot = -1;
 static _Thread_local Result s_threadError;
 
@@ -163,23 +171,90 @@ static void OwnedThreadEntry(void* value)
 {
     OwnedThread* entry = value;
     entry->callback(entry->argument);
+    mutexLock(&s_ownedLock);
+    *s_finishedTail = entry;
+    s_finishedTail = &entry->next;
+    condvarWakeOne(&s_finishedCondition);
+    mutexUnlock(&s_ownedLock);
+}
+
+static void ReaperEntry(void* unused)
+{
+    (void)unused;
+    for (;;)
+    {
+        mutexLock(&s_ownedLock);
+        while (!s_finished)
+        {
+            if (R_FAILED(condvarWait(&s_finishedCondition, &s_ownedLock)))
+                abort();
+        }
+        OwnedThread* entry = s_finished;
+        s_finished = entry->next;
+        if (!s_finished)
+            s_finishedTail = &s_finished;
+        mutexUnlock(&s_ownedLock);
+        // The entry wrapper queues before libnx runs TLS destructors. Wait for
+        // actual kernel termination before reclaiming the stack and TLS storage.
+        if (R_FAILED(threadWaitForExit(&entry->thread)) || R_FAILED(threadClose(&entry->thread)))
+            abort();
+        free(entry);
+#ifdef LIBNX_THREAD_TESTING
+        __atomic_add_fetch(&s_ownedReaped, 1, __ATOMIC_RELEASE);
+#endif
+    }
+}
+
+static Result CreateKernelThread(Thread* thread, void (*callback)(void*), void* argument, size_t stackSize)
+{
+    Result result = threadCreate(thread, callback, argument, NULL, stackSize, 0x2C, -2);
+    if (R_FAILED(result))
+        return result;
+    uint64_t coreMask = 0;
+    result = svcGetInfo(&coreMask, InfoType_CoreMask, CUR_PROCESS_HANDLE, 0);
+    if (result == 0)
+    {
+        int idealCore = svcGetCurrentProcessorNumber();
+        for (int core = 0; core < 4; core++)
+        {
+            if ((coreMask & (UINT64_C(1) << core)) && core != idealCore)
+            {
+                idealCore = core;
+                break;
+            }
+        }
+        result = svcSetThreadCoreMask(thread->handle, idealCore, coreMask);
+    }
+    if (result == 0)
+        result = threadStart(thread);
+    if (result != 0)
+        threadClose(thread);
+    return result;
 }
 
 bool LibnxStartThread(uint32_t (*callback)(void*), void* argument, size_t stackSize)
 {
-    mutexLock(&s_ownedLock);
-    OwnedThread** current = &s_owned;
-    while (*current)
+    if (!callback || stackSize > SIZE_MAX - 0xFFF)
     {
-        OwnedThread* entry = *current;
-        if (R_SUCCEEDED(waitSingleHandle(entry->thread.handle, 0)))
+        s_threadError = MAKERESULT(Module_Libnx, LibnxError_BadInput);
+        return false;
+    }
+    if (stackSize == 0)
+        stackSize = 1024 * 1024;
+    if (stackSize < 0x4000)
+        stackSize = 0x4000;
+    stackSize = (stackSize + 0xFFF) & ~(size_t)0xFFF;
+
+    mutexLock(&s_ownedLock);
+    if (!s_reaperStarted)
+    {
+        s_threadError = CreateKernelThread(&s_reaper, ReaperEntry, NULL, 0x10000);
+        if (s_threadError != 0)
         {
-            *current = entry->next;
-            threadClose(&entry->thread);
-            free(entry);
+            mutexUnlock(&s_ownedLock);
+            return false;
         }
-        else
-            current = &entry->next;
+        s_reaperStarted = true;
     }
     OwnedThread* entry = calloc(1, sizeof(*entry));
     if (!entry)
@@ -189,41 +264,26 @@ bool LibnxStartThread(uint32_t (*callback)(void*), void* argument, size_t stackS
     }
     entry->callback = callback;
     entry->argument = argument;
-    if (stackSize == 0)
-        stackSize = 1024 * 1024;
-    s_threadError = threadCreate(&entry->thread, OwnedThreadEntry, entry, NULL, stackSize, 0x2C, -2);
+    s_threadError = CreateKernelThread(&entry->thread, OwnedThreadEntry, entry, stackSize);
     if (s_threadError == 0)
     {
-        uint64_t coreMask = 0;
-        s_threadError = svcGetInfo(&coreMask, InfoType_CoreMask, CUR_PROCESS_HANDLE, 0);
-        if (s_threadError == 0)
-        {
-            int idealCore = svcGetCurrentProcessorNumber();
-            for (int core = 0; core < 4; core++)
-            {
-                if ((coreMask & (UINT64_C(1) << core)) && core != idealCore)
-                {
-                    idealCore = core;
-                    break;
-                }
-            }
-            s_threadError = svcSetThreadCoreMask(entry->thread.handle, idealCore, coreMask);
-        }
-        if (s_threadError == 0)
-            s_threadError = threadStart(&entry->thread);
-        if (s_threadError != 0)
-            threadClose(&entry->thread);
-    }
-    if (s_threadError == 0)
-    {
-        entry->next = s_owned;
-        s_owned = entry;
+#ifdef LIBNX_THREAD_TESTING
+        __atomic_add_fetch(&s_ownedStarted, 1, __ATOMIC_RELEASE);
+#endif
     }
     else
         free(entry);
     mutexUnlock(&s_ownedLock);
     return s_threadError == 0;
 }
+
+#ifdef LIBNX_THREAD_TESTING
+void LibnxThreadTestCounts(uint32_t* started, uint32_t* reaped)
+{
+    *started = __atomic_load_n(&s_ownedStarted, __ATOMIC_ACQUIRE);
+    *reaped = __atomic_load_n(&s_ownedReaped, __ATOMIC_ACQUIRE);
+}
+#endif
 
 uint32_t LibnxThreadLastError(void)
 {
