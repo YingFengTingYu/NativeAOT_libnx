@@ -783,6 +783,16 @@ bool GCToEEInterface::GetIntConfigValue(const char* privateKey, const char* publ
         }
     }
 
+#ifdef TARGET_LIBNX
+    // Heap pages share libnx's limited stack mapping region with ASLR-placed
+    // native stacks. Avoid the upstream default's large contiguous reservation.
+    // This fallback follows both config lookups so explicit host values win.
+    if (strcmp(privateKey, "GCRegionRange") == 0)
+    {
+        *value = 256 * 1024 * 1024;
+        return true;
+    }
+#endif
     return false;
 }
 
