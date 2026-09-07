@@ -17,6 +17,8 @@ flags=(-g -O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=
     -Wl,--start-group "$native/nativeaot/Runtime/Full/libRuntime.WorkstationGC.a" \
     "$native/shared_minipal/libaotminipal.a" \
     "$native/libSystem.Native.a" \
+    "$native/libSystem.Security.Cryptography.Native.Libnx.a" \
+    "$DEVKITPRO/portlibs/switch/lib/libmbedcrypto.a" \
     "$native/libSystem.IO.Compression.Native.a" \
     "$native/_deps/fetchzlibng-build/libz.a" \
     "$native/_deps/brotli-build/libbrotlienc.a" \
@@ -34,6 +36,7 @@ cp "$repo_root/LICENSE.TXT" "$output/licenses/dotnet-runtime.txt"
 cp "$repo_root/THIRD-PARTY-NOTICES.TXT" "$output/licenses/dotnet-third-party-notices.txt"
 cp "$repo_root/src/native/external/zlib-ng/LICENSE.md" "$output/licenses/zlib-ng.txt"
 cp "$repo_root/src/native/external/brotli/LICENSE" "$output/licenses/brotli.txt"
+cp "$DEVKITPRO/portlibs/switch/licenses/switch-mbedtls/LICENSE" "$output/licenses/mbedtls.txt"
 probe_licenses="$(dirname -- "$LIBNX_PROBE_HOST")/../licenses"
 if [[ -d "$probe_licenses" ]]; then
     for license in "$probe_licenses"/*; do

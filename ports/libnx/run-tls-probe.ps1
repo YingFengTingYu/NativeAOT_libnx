@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$EdenPath,
-    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System')]
+    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System', 'Crypto')]
     [string]$Suite = 'Tls'
 )
 
@@ -60,7 +60,7 @@ flush_line=true
 $allPassed = $true
 $modes = if ($Suite -eq 'Tls') { @('libnx', 'linux_control') } else { @($Suite.ToLowerInvariant()) }
 $probeDirectory = $Suite.ToLowerInvariant() + '-probe'
-$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } }
+$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } 'Crypto' { 'AOTCRYPTO' } }
 foreach ($mode in $modes)
 {
     $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } else { "nativeaot-$mode.nro" }
@@ -88,7 +88,11 @@ foreach ($mode in $modes)
     }
     $observed = @([regex]::Matches($logText, ('\[' + $prefix + '\] ([^\r\n]+)')) |
         ForEach-Object { $_.Groups[1].Value })
-    $required = if ($Suite -eq 'System')
+    $required = if ($Suite -eq 'Crypto')
+    {
+        @('begin=1', 'errors.report_and_clear=1', 'errors.thread_local=1', 'capabilities.unsupported=1', 'pass=1')
+    }
+    elseif ($Suite -eq 'System')
     {
         @('begin=1', 'mapping.protection=1', 'mapping.release=1', 'monitor.timeout=1',
           'monitor.signal=1', 'time.monotonic=1', 'random.sanity=1', 'pass=1')

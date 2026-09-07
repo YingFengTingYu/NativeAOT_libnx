@@ -20,6 +20,8 @@
 
 zlib、gzip、Brotli、项目同版本 ZstdSharp 与第三方依赖收集见 [第十六轮](results/2026-09-07-round16.md)。
 
+资源校验所需的摘要后端及 SHA-256/增量摘要验证见 [第十七轮](results/2026-09-07-round17.md)。
+
 - 上游：`https://github.com/dotnet/runtime.git`
 - 标记：`v10.0.11`
 - runtime 提交：`79d0c463f1b55624c874a11585f7e47731e8d675`
