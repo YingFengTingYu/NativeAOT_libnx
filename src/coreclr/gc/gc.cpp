@@ -9286,10 +9286,11 @@ void gc_heap::get_card_table_element_layout (uint8_t* start, uint8_t* end, size_
     for (int element = brick_table_element; element <= total_bookkeeping_elements; element++)
     {
         layout[element] = layout[element - 1] + sizes[element - 1];
-        if ((element != total_bookkeeping_elements) && (sizes[element] != 0))
-        {
-            layout[element] = ALIGN_UP(layout[element], alignment[element]);
-        }
+        // Commit ranges are capped at the next element's page boundary, even
+        // when that element is empty (notably the mark array with background
+        // GC disabled). Keep those boundaries aligned so the segment mapping
+        // table's final partial page is not excluded from every commit range.
+        layout[element] = ALIGN_UP(layout[element], alignment[element]);
     }
 }
 
