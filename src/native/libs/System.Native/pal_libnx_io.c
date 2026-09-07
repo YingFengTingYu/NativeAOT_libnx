@@ -53,6 +53,13 @@ static bool ValidDescriptor(intptr_t fd)
     return true;
 }
 
+int32_t SystemNative_ChDir(const char* path)
+{
+    char buffer[FS_MAX_PATH + 8];
+    const char* native = NativePath(path, buffer);
+    return native ? chdir(native) : -1;
+}
+
 static void ConvertStatus(const struct stat* source, FileStatus* output)
 {
     memset(output, 0, sizeof(*output));

@@ -7,6 +7,8 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 output="${LIBNX_PROBE_OUTPUT:-$repo_root/artifacts/libnx/managed-probe}"
 native="$repo_root/artifacts/obj/libnx/runtime"
 mkdir -p "$output"
+# A failed link must not leave an older NRO available under the expected name.
+rm -f "$output/managed-probe.nro"
 flags=(-g -O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=local-exec
        -fPIE -ffunction-sections -fdata-sections -D__SWITCH__ -I"$DEVKITPRO/libnx/include")
 extra_libs=()

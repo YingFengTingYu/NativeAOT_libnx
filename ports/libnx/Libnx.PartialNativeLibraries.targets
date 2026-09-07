@@ -1,0 +1,19 @@
+<Project>
+  <!-- Linux SDK defaults assume complete Unix PAL archives. A partial libnx
+       port only directly binds actual exported methods. Unimplemented methods
+       retain normal lazy resolution, which explicitly fails on this runtime.
+       Linking alone never establishes that an API works. -->
+  <Target Name="ConfigureLibnxPartialNativeLibraries" AfterTargets="SetupOSSpecificProps">
+    <Error Condition="!Exists('$(LibnxDirectPInvokeList)')"
+           Text="Generate LibnxDirectPInvokeList from the current native runtime archives first." />
+    <!-- Put the actual entries in the response file so a changed export set
+         invalidates the SDK's incremental ILC output. -->
+    <ReadLinesFromFile File="$(LibnxDirectPInvokeList)">
+      <Output TaskParameter="Lines" ItemName="LibnxDirectPInvokeEntry" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <DirectPInvoke Remove="System.Native;System.Security.Cryptography.Native.OpenSsl;System.Net.Security.Native" />
+      <DirectPInvoke Include="@(LibnxDirectPInvokeEntry)" />
+    </ItemGroup>
+  </Target>
+</Project>

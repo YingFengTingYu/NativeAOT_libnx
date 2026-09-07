@@ -20,6 +20,7 @@
 
 void SystemNative_Abort(void) { abort(); }
 void* SystemNative_Malloc(uintptr_t size) { return malloc(size); }
+void* SystemNative_Realloc(void* memory, uintptr_t size) { return realloc(memory, size); }
 void* SystemNative_Calloc(uintptr_t count, uintptr_t size) { return calloc(count, size); }
 void SystemNative_Free(void* memory) { free(memory); }
 char* SystemNative_GetEnv(const char* name) { return getenv(name); }
