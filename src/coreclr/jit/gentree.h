@@ -4391,8 +4391,8 @@ struct AsyncCallInfo
     // call and restored after it. This happens consistently regardless of whether the callee finishes synchronously or
     // not. This is represented by "ExecutionContextHandling == SaveAndRestore".
     //
-    ExecutionContextHandling    ExecutionContextHandling                  = ExecutionContextHandling::None;
-    ContinuationContextHandling ContinuationContextHandling               = ContinuationContextHandling::None;
+    ::ExecutionContextHandling  ExecutionContextHandling                  = ::ExecutionContextHandling::None;
+    ::ContinuationContextHandling ContinuationContextHandling             = ::ContinuationContextHandling::None;
     bool                        SaveAndRestoreSynchronizationContextField = false;
     bool                        HasSuspensionIndicatorDef                 = false;
     unsigned                    SynchronizationContextLclNum              = BAD_VAR_NUM;
