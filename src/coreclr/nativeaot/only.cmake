@@ -18,6 +18,7 @@ if(CLR_CMAKE_TARGET_LIBNX)
   add_library(System.Native STATIC "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx.c"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx_io.c"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx_console.c"
+    "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_libnx_dynamicload.c"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_string.c"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native/pal_errno.c")
   target_include_directories(System.Native PRIVATE "${CLR_SRC_NATIVE_DIR}/libs/Common"

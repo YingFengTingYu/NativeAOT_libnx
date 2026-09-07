@@ -4,11 +4,18 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${DEVKITA64:=${DEVKITPRO:?}/devkitA64}"
 : "${LIBNX_MANAGED_OBJECT:?Set LIBNX_MANAGED_OBJECT to the ILC-generated ARM64 object}"
 : "${LIBNX_PROBE_HOST:?Set LIBNX_PROBE_HOST to the native probe main.c}"
-output="$repo_root/artifacts/libnx/managed-probe"
+output="${LIBNX_PROBE_OUTPUT:-$repo_root/artifacts/libnx/managed-probe}"
 native="$repo_root/artifacts/obj/libnx/runtime"
 mkdir -p "$output"
 flags=(-g -O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=local-exec
        -fPIE -ffunction-sections -fdata-sections -D__SWITCH__ -I"$DEVKITPRO/libnx/include")
+extra_libs=()
+if [[ -n "${LIBNX_PROBE_PKG_CONFIG:-}" ]]; then
+    export PKG_CONFIG_LIBDIR="$DEVKITPRO/portlibs/switch/lib/pkgconfig"
+    read -r -a package_flags <<< "$(pkg-config --cflags "$LIBNX_PROBE_PKG_CONFIG")"
+    read -r -a extra_libs <<< "$(pkg-config --libs "$LIBNX_PROBE_PKG_CONFIG")"
+    flags+=("${package_flags[@]}")
+fi
 "$DEVKITA64/bin/aarch64-none-elf-gcc" "${flags[@]}" -DNX_MANAGED_PROBE \
     -c "$LIBNX_PROBE_HOST" -o "$output/main.o"
 "$DEVKITA64/bin/aarch64-none-elf-g++" "${flags[@]}" \
@@ -26,7 +33,7 @@ flags=(-g -O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=
     "$native/_deps/brotli-build/libbrotlicommon.a" \
     "$native/nativeaot/Runtime/Full/libstandalonegc-disabled.a" \
     "$native/nativeaot/Runtime/eventpipe/libeventpipe-disabled.a" \
-    -L"$DEVKITPRO/libnx/lib" -lnx -lm -Wl,--end-group -Wl,--eh-frame-hdr \
+    "${extra_libs[@]}" -L"$DEVKITPRO/libnx/lib" -lnx -lm -Wl,--end-group -Wl,--eh-frame-hdr \
     -Wl,-T,"$repo_root/ports/libnx/linker-aot.ld" \
     -Wl,-Map,"$output/managed-probe.map" -o "$output/managed-probe.elf" \
     >"$output/link.log" 2>&1
