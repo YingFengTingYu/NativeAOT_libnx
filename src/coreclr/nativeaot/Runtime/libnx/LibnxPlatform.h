@@ -24,6 +24,9 @@ void LibnxEventSet(void* event);
 void LibnxEventReset(void* event);
 uint32_t LibnxEventWait(void* event, uint32_t milliseconds);
 void LibnxEventClose(void* event);
+#ifdef LIBNX_EVENT_TESTING
+uint32_t LibnxEventTestWaiterCount(void* event);
+#endif
 
 bool LibnxThreadsInitialize(void);
 bool LibnxThreadAttach(void* owner, void (*onExit)(void*));

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <time.h>
 #include <minipal/time.h>
 #include "pal_threading.h"
@@ -20,6 +21,30 @@ void SystemNative_Free(void* memory) { free(memory); }
 char* SystemNative_GetEnv(const char* name) { return getenv(name); }
 int32_t SystemNative_GetErrNo(void) { return errno; }
 void SystemNative_SetErrNo(int32_t error) { errno = error; }
+int32_t SystemNative_CreateThread(uintptr_t stackSize, void* (*startAddress)(void*), void* parameter)
+{
+    // Newlib stores the size in a signed int and libnx requires page alignment.
+    // Use the same default stack size as our runtime helper threads.
+    if (!startAddress || stackSize > (uintptr_t)INT_MAX - 0xFFF)
+        return false;
+    if (stackSize == 0)
+        stackSize = 1024 * 1024;
+    if (stackSize < 0x4000)
+        stackSize = 0x4000;
+    stackSize = (stackSize + 0xFFF) & ~(uintptr_t)0xFFF;
+
+    pthread_attr_t attributes;
+    if (pthread_attr_init(&attributes) != 0)
+        return false;
+    int error = pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
+    if (error == 0)
+        error = pthread_attr_setstacksize(&attributes, stackSize);
+    pthread_t thread;
+    if (error == 0)
+        error = pthread_create(&thread, &attributes, startAddress, parameter);
+    pthread_attr_destroy(&attributes);
+    return error == 0;
+}
 int32_t SystemNative_SchedGetCpu(void) { return svcGetCurrentProcessorNumber(); }
 int64_t SystemNative_GetTimestamp(void) { return minipal_hires_ticks(); }
 int64_t SystemNative_GetLowResolutionTimestamp(void) { return minipal_lowres_ticks(); }

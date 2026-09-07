@@ -83,6 +83,53 @@ static void SignalWorker(void* event)
     LibnxEventSet(event);
 }
 
+typedef struct
+{
+    void* event;
+    uint32_t result;
+} WaitWorkerState;
+
+static void WaitWorker(void* value)
+{
+    WaitWorkerState* state = value;
+    state->result = LibnxEventWait(state->event, 2000);
+}
+
+static bool EventBroadcastChecks(void)
+{
+    void* event = LibnxEventCreate(true, false);
+    if (!event)
+        return false;
+    bool passed = true;
+    for (int pass = 0; pass < 64 && passed; pass++)
+    {
+        Thread threads[2];
+        WaitWorkerState states[2] = { { event, UINT32_MAX }, { event, UINT32_MAX } };
+        for (int index = 0; index < 2; index++)
+        {
+            if (R_FAILED(threadCreate(&threads[index], WaitWorker, &states[index], NULL, 0x10000, 0x2C, -2)) ||
+                R_FAILED(threadStart(&threads[index])))
+                return false;
+        }
+        uint64_t deadline = armGetSystemTick() + armNsToTicks(1000000000);
+        while (LibnxEventTestWaiterCount(event) != 2 && armGetSystemTick() < deadline)
+            svcSleepThread(100000);
+        passed = LibnxEventTestWaiterCount(event) == 2;
+        LibnxEventSet(event);
+        LibnxEventReset(event);
+        for (int index = 0; index < 2; index++)
+        {
+            threadWaitForExit(&threads[index]);
+            threadClose(&threads[index]);
+            passed = passed && states[index].result == 0;
+        }
+        passed = passed && LibnxEventWait(event, 0) == 258;
+    }
+    LibnxEventClose(event);
+    Record("event.broadcast_reset", passed);
+    return passed;
+}
+
 static bool EventChecks(void)
 {
     void* event = LibnxEventCreate(false, false);
@@ -114,7 +161,7 @@ int main(void)
     Record("begin", 1);
     bool memory = MemoryChecks();
     Record("memory.checks", memory);
-    bool events = EventChecks();
+    bool events = EventChecks() && EventBroadcastChecks();
     Record("events.checks", events);
     Record("pass", memory && events);
     return memory && events ? 0 : 1;
