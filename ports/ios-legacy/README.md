@@ -2,6 +2,8 @@
 
 本目录从现有 `ios-arm64` NativeAOT 向下适配 iOS 7，不依赖 macios 托管绑定。当前已构建 ARM64 与 ARMv7 的运行时、`System.Native` 和 C# 命令行探针；两种架构均在 iOS 10.0.2 的 iPad mini 4 上通过全部 7 组功能测试，Apple Silicon Mac 回归也通过。**尚未在真实 iOS 7 设备上验证，不能据此宣称完整支持 iOS 7。**
 
+新增的普通项目发布入口和第 8 组 `interop` 测试，以及 ARM32 默认结构体对齐修复，见 [项目发布与互操作验证记录](results/2026-09-09-project-interop.md)。上述七组真机结果属于此前的运行时验证；本轮产物的设备状态单独记录。
+
 ## 固定基线与分支
 
 - 官方仓库：<https://github.com/dotnet/runtime>
@@ -79,7 +81,9 @@ python3 ports/ios-legacy/build-probe.py --platform osx
 ./artifacts/legacy-ios/probes/osx/publish/LegacyIOSProbe callbacks
 ```
 
-可用名称为 `clock`、`gc`、`exceptions`、`threads`、`callbacks`、`tasks`、`files`。全部运行时应显示 `PASS ALL (7 suites)` 并返回 0。
+可用名称为 `clock`、`gc`、`exceptions`、`threads`、`callbacks`、`interop`、`tasks`、`files`。当前全部运行时应显示 `PASS ALL (8 suites)` 并返回 0。
+
+`interop` 检查 C/C# 的结构体大小和偏移、结构体传参和返回、寄存器/栈拆分结构体、浮点聚合、`Pack=1`、嵌套结构体、`ref/out`、混合浮点参数及特殊浮点值，并运行带 GC 和嵌套 P/Invoke 的委托与 `UnmanagedCallersOnly` 回调（包括外部 pthread）。
 
 所有二进制、SDK 暂存、NuGet 文件、日志和设备信息均放在被忽略的 `artifacts` 或仓库外目录，不应提交。
 
@@ -102,11 +106,51 @@ python3 ports/ios-legacy/audit-probe.py --arch arm
 ARM32 脚本直接使用源码构建的 `ios.arm` CoreLib 和基础库，不依赖不存在的官方 `ios-arm` NativeAOT runtime-pack。它同时生成链接映射和各阶段日志，输出位于：
 
 - `artifacts/legacy-ios/probes/ios-arm/minimal/ArmHello`：托管入口与一次 P/Invoke。
-- `artifacts/legacy-ios/probes/ios-arm/full/LegacyIOSProbe32`：七组测试，回调组还检查 64 位参数处于奇数寄存器槽及横跨寄存器/栈时的 ABI。
+- `artifacts/legacy-ios/probes/ios-arm/full/LegacyIOSProbe32`：当前八组测试，回调组检查 64 位参数处于奇数寄存器槽及横跨寄存器/栈时的 ABI，互操作组覆盖结构体与浮点。
 
 设备启动方式沿用下文的系统目录方案。ARM32 探针可以放在 `/usr/local/libexec/NativeAOTProbe-arm32`，并记录完整输出及退出码。本轮实机结果与 ABI 修复详见 [2026-09-09 ARM32 验证记录](results/2026-09-09-arm32.md)。
 
 ## 接入其他托管项目时的必要设置
+
+### 普通 `.csproj` 发布入口
+
+完成上文对应架构的运行时、基础库和 ILC 构建后，可以直接发布普通 `net10.0` 控制台项目。项目无需引用 macios，也无需添加本地工具链路径：
+
+```bash
+python3 ports/ios-legacy/publish-project.py /绝对路径/MyApp.csproj --arch arm --sign
+python3 ports/ios-legacy/publish-project.py /绝对路径/MyApp.csproj --arch arm64 --sign
+```
+
+`--arch arm` 表示 ARMv7；最低系统固定为 iOS 7.0。两个架构都使用对应源码构建的 CoreLib、基础库和旧系统原生运行时。托管阶段由 .NET SDK 构建原项目，保留 `Compile` 项、项目引用、纯托管 NuGet 依赖、源生成器、嵌入资源和普通发布内容，再交给本地 ILC 和旧 SDK 链接。
+
+可选参数：
+
+- `--sdk /路径/iPhoneOS9.3.sdk`：选择旧 SDK 的位置。
+- `--output /专用输出目录`：保存本次构建；不同项目与架构必须使用不同目录。
+- `--configuration Release`：项目构建配置。
+- `--framework net10.0`：多目标项目必须显式选择这个目标。
+- `--native-source callback.c`：编译并链接 C / Objective-C 文件，可重复。
+- `--native-library libExample.a`：链接已构建的 `.a` / `.o`，检查目标架构，可重复。
+- `--link-framework UIKit`：额外链接 Apple framework，可重复。
+- `--direct-pinvoke MyNativeLibrary`：静态解析指定的 P/Invoke 库名，可重复。
+- `--sign`：越狱测试用 ad-hoc 双摘要签名，并验证签名。
+
+也会读取项目的 `NativeLibrary`、`DirectPInvoke`、`IlcArg` 和 `RuntimeHostConfigurationOption`。目标架构、最低版本、pthread TLS、Workstation GC 和必要特性开关由入口统一设置，不接受冲突配置。托管阶段 `RuntimeIdentifier` 为空；需要区分平台的项目应使用独立项目或项目自身的显式构建配置，不应依赖此阶段的 `ios-arm` RID 条件。
+
+成功时打印 `publish/` 下的可执行文件路径。请把**整个 `publish/` 目录的内容**一起传到设备，普通内容文件需要和程序一起发布。`build-manifest.json` 记录哈希、架构、特性配置和构建日志目录；每次构建另存工作目录，失败时保留前一次成功产物。静态审计自动检查最低版本、依赖、TLS 和 ARM32 展开表；清单中的 `device_tested` 保持 `false`，不会把编译成功当成真机成功。
+
+当前范围是普通 `net10.0`、`OutputType=Exe` 项目。iOS workload 项目、`.app` 打包、原生共享库输出、卫星资源程序集和含 RID 专属资产的 NuGet 包尚未接入，遇到这些输入会明确报错。加密、TLS/HTTP 与非 invariant 全球化仍不在已验证范围。此入口固定使用 invariant 全球化和 Workstation GC。
+
+仓库中的普通项目示例覆盖项目引用、传递 NuGet 依赖、`LibraryImport` 源生成、嵌入资源和内容文件：
+
+```bash
+python3 ports/ios-legacy/publish-project.py ports/ios-legacy/examples/Hello/Hello.csproj --arch arm --sign
+python3 ports/ios-legacy/publish-project.py ports/ios-legacy/examples/Hello/Hello.csproj --arch arm64 --sign
+```
+
+示例正常运行时输出 `PASS project / NuGet / LibraryImport / resource / content`。
+
+### 手动接入
 
 必须同时使用修改后的原生运行时与本地 ILCompiler，并禁用托管代码中的内联 TLS。仅设置 `AppleMinOSVersion=7.0` 不够。`build-probe.py` 演示了 `IlcToolsPath`、`IlcSdkPath`、`IlcFrameworkNativePath` 与 `SysRoot` 的组合。
 

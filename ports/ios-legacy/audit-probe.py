@@ -19,6 +19,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arch", choices=["arm64", "arm"], default="arm64")
     parser.add_argument("--minimal", action="store_true", help="检查 ARM32 最小启动探针")
+    parser.add_argument("--binary", type=Path, help="检查指定程序，而非默认探针")
+    parser.add_argument("--report", type=Path, help="JSON 检查结果路径")
     args = parser.parse_args()
     if args.minimal and args.arch != "arm":
         parser.error("--minimal 需要 --arch arm。")
@@ -28,6 +30,8 @@ def main():
         binary = repo / "artifacts/legacy-ios/probes/ios-arm" / variant
     else:
         binary = repo / "artifacts/legacy-ios/probes/ios/publish/LegacyIOSProbe"
+    if args.binary:
+        binary = args.binary.expanduser().resolve()
     architecture = output("xcrun", "lipo", "-archs", str(binary)).strip()
     commands = output("xcrun", "otool", "-l", str(binary))
     imports = output("xcrun", "nm", "-u", str(binary))
@@ -62,6 +66,10 @@ def main():
         report["runtime_globals"] = runtime_globals
         report["passed"] &= len(runtime_globals) == 2 and all("weak" not in line for line in runtime_globals)
     path = binary.parent / "audit.json" if args.arch == "arm" else repo / "artifacts/legacy-ios/probes/ios/audit.json"
+    if args.binary:
+        path = binary.parent / "audit.json"
+    if args.report:
+        path = args.report
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if not report["passed"]:

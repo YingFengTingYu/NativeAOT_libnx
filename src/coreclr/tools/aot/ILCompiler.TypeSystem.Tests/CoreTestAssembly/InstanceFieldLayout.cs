@@ -533,6 +533,22 @@ namespace IsByRefLike
 
 namespace EnumAlignment
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct PackedDoubleStruct
+    {
+        public byte Tag;
+        public double Value;
+        public short Tail;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 8)]
+    public struct AlignedDoubleStruct
+    {
+        public byte Tag;
+        public double Value;
+        public short Tail;
+    }
+
     public enum ByteEnum : byte { Val }
     public enum ShortEnum : short { Val }
     public enum IntEnum : int { Val }

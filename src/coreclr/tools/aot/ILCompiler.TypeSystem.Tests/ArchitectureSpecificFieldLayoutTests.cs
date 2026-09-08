@@ -82,6 +82,35 @@ namespace TypeSystemTests
             Assert.Equal(0x10, tX86.InstanceByteCount.AsInt);
         }
 
+        [Theory]
+        [InlineData(TargetArchitecture.ARM, TargetOS.iOS, 4, 24, 12)]
+        [InlineData(TargetArchitecture.ARM, TargetOS.Linux, 8, 32, 16)]
+        [InlineData(TargetArchitecture.ARM64, TargetOS.iOS, 8, 32, 16)]
+        public void TestAppleArmDefaultStructPacking(TargetArchitecture architecture, TargetOS os,
+            int alignment, int size, int secondLongOffset)
+        {
+            TestTypeSystemContext context = new TestTypeSystemContext(architecture, os);
+            ModuleDesc module = context.CreateModuleForSimpleName("CoreTestAssembly");
+            context.SetSystemModule(module);
+            MetadataType type = module.GetType("EnumAlignment", "LongIntEnumStruct");
+            Assert.Equal(alignment, type.InstanceFieldAlignment.AsInt);
+            Assert.Equal(size, type.InstanceFieldSize.AsInt);
+            Assert.Equal(secondLongOffset, type.GetField("_3").Offset.AsInt);
+
+            MetadataType container = module.GetType("EnumAlignment", "LongIntEnumStructFieldStruct");
+            Assert.Equal(alignment, container.GetField("_struct").Offset.AsInt);
+
+            MetadataType packed = module.GetType("EnumAlignment", "PackedDoubleStruct");
+            Assert.Equal(11, packed.InstanceFieldSize.AsInt);
+            Assert.Equal(1, packed.GetField("Value").Offset.AsInt);
+            MetadataType aligned = module.GetType("EnumAlignment", "AlignedDoubleStruct");
+            Assert.Equal(24, aligned.InstanceFieldSize.AsInt);
+            Assert.Equal(8, aligned.GetField("Value").Offset.AsInt);
+
+            // Default native packing must not relax managed primitive alignment.
+            Assert.Equal(8, context.Target.GetWellKnownTypeAlignment((DefType)context.GetWellKnownType(WellKnownType.Int64)).AsInt);
+        }
+
         [Fact]
         public void TestInstanceLayoutBoolDoubleBool()
         {
