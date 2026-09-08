@@ -59,6 +59,7 @@ namespace ILCompiler.ObjectWriter
         private sealed record CompactUnwindCode(string PcStartSymbolName, uint PcLength, uint Code, string LsdaSymbolName = null, string PersonalitySymbolName = null);
 
         private readonly TargetOS _targetOS;
+        private readonly Version _minimumOSVersion;
         private readonly uint _cpuType;
         private readonly uint _cpuSubType;
         private readonly List<MachSection> _sections = new();
@@ -94,6 +95,7 @@ namespace ILCompiler.ObjectWriter
             }
 
             _targetOS = factory.Target.OperatingSystem;
+            _minimumOSVersion = factory.Target.MachOMinimumOSVersion;
         }
 
         private protected override void EmitSectionsAndLayout()
@@ -266,6 +268,14 @@ namespace ILCompiler.ObjectWriter
                     };
                     buildVersion.MinimumPlatformVersion = 0x0C_02_00; // 12.2.0
                     break;
+            }
+            if (_minimumOSVersion is Version minimumVersion)
+            {
+                buildVersion.MinimumPlatformVersion = ((uint)minimumVersion.Major << 16) |
+                    ((uint)minimumVersion.Minor << 8) | (uint)Math.Max(0, minimumVersion.Build);
+                // ILC does not consume an Apple SDK. The final native link
+                // records the SDK actually selected by the application build.
+                buildVersion.SdkVersion = 0;
             }
             buildVersion.Write(outputFileStream);
 

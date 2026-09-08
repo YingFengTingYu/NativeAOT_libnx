@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <PublishAot>true</PublishAot>
+    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    <RuntimeFrameworkVersion>10.0.7</RuntimeFrameworkVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EventSourceSupport>false</EventSourceSupport>
+    <StripSymbols>false</StripSymbols>
+    <OptimizationPreference>Speed</OptimizationPreference>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <IlcArg Include="--noinlinetls" />
+    <IlcArg Include="--macho-minimum-os-version:7.0" Condition="'$(RuntimeIdentifier)' == 'ios-arm64'" />
+    <NativeLibrary Include="$(LegacyIOSProbeObject)" />
+    <DirectPInvoke Include="__Internal" />
+  </ItemGroup>
+  <Target Name="ValidateLegacyIOSProbe" BeforeTargets="IlcCompile">
+    <Error Condition="'$(LegacyIOSProbeObject)' == '' or !Exists('$(LegacyIOSProbeObject)')"
+           Text="Run ports/ios-legacy/build-probe.py to build the native callback probe first." />
+  </Target>
+  <!-- These probes exercise the runtime, threading and file APIs. They do not
+       call CryptoKit or Network.framework APIs unavailable on legacy iOS. -->
+  <Target Name="RemoveUnusedModernFrameworks" AfterTargets="SetupOSSpecificProps" Condition="'$(RuntimeIdentifier)' == 'ios-arm64'">
+    <ItemGroup>
+      <LinkerArg Remove="-lswiftCore;-lswiftFoundation;-L/usr/lib/swift;-framework CryptoKit;-framework Network" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -57,7 +57,11 @@ inline void ee_alloc_context::UpdateCombinedLimit(bool samplingEnabled)
 inline uint32_t ee_alloc_context::ComputeGeometricRandom()
 {
     // compute a random sample from the Geometric distribution.
+#ifdef FEATURE_PTHREAD_TLS
+    double probability = GetThreadRandom().NextDouble();
+#else
     double probability = t_random.NextDouble();
+#endif
     uint32_t threshold = (uint32_t)(-log(1 - probability) * SamplingDistributionMean);
     return threshold;
 }

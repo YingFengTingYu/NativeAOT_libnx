@@ -41,6 +41,8 @@
 #include <cstdarg>
 #include <signal.h>
 #include <minipal/thread.h>
+#include <minipal/time.h>
+#include "PthreadTls.h"
 
 #ifdef TARGET_LINUX
 #include <sys/syscall.h>
@@ -265,7 +267,7 @@ public:
 
         PthreadCondAttrHolder attrsHolder(&attrs);
 
-#if HAVE_PTHREAD_CONDATTR_SETCLOCK && !HAVE_CLOCK_GETTIME_NSEC_NP
+#if HAVE_PTHREAD_CONDATTR_SETCLOCK && !defined(TARGET_APPLE)
         // Ensure that the pthread_cond_timedwait will use CLOCK_MONOTONIC
         st = pthread_condattr_setclock(&attrs, CLOCK_MONOTONIC);
         if (st != 0)
@@ -273,7 +275,7 @@ public:
             ASSERT_UNCONDITIONALLY("Failed to set UnixEvent condition variable wait clock");
             return false;
         }
-#endif // HAVE_PTHREAD_CONDATTR_SETCLOCK && !HAVE_CLOCK_GETTIME_NSEC_NP
+#endif // HAVE_PTHREAD_CONDATTR_SETCLOCK && !defined(TARGET_APPLE)
 
         st = pthread_mutex_init(&m_mutex, NULL);
         if (st != 0)
@@ -318,13 +320,13 @@ public:
     uint32_t Wait(uint32_t milliseconds)
     {
         timespec endTime;
-#if HAVE_CLOCK_GETTIME_NSEC_NP
+#if defined(TARGET_APPLE)
         uint64_t endNanoseconds;
         if (milliseconds != INFINITE)
         {
             uint64_t nanoseconds = (uint64_t)milliseconds * tccMilliSecondsToNanoSeconds;
             NanosecondsToTimeSpec(nanoseconds, &endTime);
-            endNanoseconds = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) + nanoseconds;
+            endNanoseconds = (uint64_t)minipal_hires_ticks() + nanoseconds;
         }
 #elif HAVE_PTHREAD_CONDATTR_SETCLOCK
         if (milliseconds != INFINITE)
@@ -347,13 +349,13 @@ public:
             }
             else
             {
-#if HAVE_CLOCK_GETTIME_NSEC_NP
-                // Since OSX doesn't support CLOCK_MONOTONIC, we use relative variant of the
-                // timed wait and we need to handle spurious wakeups properly.
+#if defined(TARGET_APPLE)
+                // Apple condition variables support relative waits. Use the minipal
+                // monotonic clock to account for spurious wakeups on older systems too.
                 st = pthread_cond_timedwait_relative_np(&m_condition, &m_mutex, &endTime);
                 if ((st == 0) && !m_state)
                 {
-                    uint64_t currentNanoseconds = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+                    uint64_t currentNanoseconds = (uint64_t)minipal_hires_ticks();
                     if (currentNanoseconds < endNanoseconds)
                     {
                         // The wake up was spurious, recalculate the relative endTime
@@ -368,9 +370,9 @@ public:
                         st = ETIMEDOUT;
                     }
                 }
-#else // HAVE_CLOCK_GETTIME_NSEC_NP
+#else // TARGET_APPLE
                 st = pthread_cond_timedwait(&m_condition, &m_mutex, &endTime);
-#endif // HAVE_CLOCK_GETTIME_NSEC_NP
+#endif // TARGET_APPLE
             }
 
             if (st != 0)
@@ -484,7 +486,7 @@ void InitializeOsPageSize()
 
 #if defined(HOST_AMD64)
     ASSERT(g_RhPageSize == 0x1000);
-#elif defined(HOST_APPLE)
+#elif defined(HOST_APPLE) && !defined(FEATURE_PTHREAD_TLS)
     ASSERT(g_RhPageSize == 0x4000);
 #endif
 }
@@ -506,6 +508,11 @@ bool InitializeSignalHandling();
 // initialization and false on failure.
 bool PalInit()
 {
+    InitializeOsPageSize();
+#ifdef FEATURE_PTHREAD_TLS
+    if (!PalInitializePthreadTls())
+        return false;
+#endif
 #ifndef USE_PORTABLE_HELPERS
     if (!InitializeHardwareExceptionHandling())
     {
@@ -531,8 +538,6 @@ bool PalInit()
 
     InitializeCurrentProcessCpuCount();
 
-    InitializeOsPageSize();
-
 #ifdef FEATURE_HIJACK
     if (!InitializeSignalHandling())
     {
@@ -550,7 +555,7 @@ bool PalInit()
     return true;
 }
 
-#if !defined(TARGET_LINUX) && !defined(TARGET_ANDROID)
+#if !defined(TARGET_LINUX) && !defined(TARGET_ANDROID) && !defined(FEATURE_PTHREAD_TLS)
 struct TlsDestructionMonitor
 {
     void* m_thread = nullptr;
@@ -575,18 +580,31 @@ thread_local TlsDestructionMonitor tls_destructionMonitor;
 #endif
 
 // This thread local variable is used for delegate marshalling
+#ifndef FEATURE_PTHREAD_TLS
 PLATFORM_THREAD_LOCAL intptr_t tls_thunkData;
+#endif
 
 #ifdef FEATURE_EMULATED_TLS
+#ifdef FEATURE_PTHREAD_TLS
+EXTERN_C intptr_t* RhpGetThunkDataPthread()
+{
+    return PalGetPthreadThunkData();
+}
+#else
 EXTERN_C intptr_t* RhpGetThunkData()
 {
     return &tls_thunkData;
 }
+#endif
 #endif //FEATURE_EMULATED_TLS
 
 FCIMPL0(intptr_t, RhGetCurrentThunkContext)
 {
+#ifdef FEATURE_PTHREAD_TLS
+    return *PalGetPthreadThunkData();
+#else
     return tls_thunkData;
+#endif
 }
 FCIMPLEND
 
@@ -596,7 +614,9 @@ FCIMPLEND
 //  thread        - thread to attach
 void PalAttachThread(void* thread)
 {
-#if defined(TARGET_LINUX) || defined(TARGET_ANDROID)
+#ifdef FEATURE_PTHREAD_TLS
+    PalAttachPthreadThread(thread);
+#elif defined(TARGET_LINUX) || defined(TARGET_ANDROID)
     if (pthread_setspecific(key, thread) != 0)
     {
         _ASSERTE(!"pthread_setspecific failed");
@@ -622,7 +642,15 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
     // and the second range will contain their data.
     do
     {
+#ifdef FEATURE_PTHREAD_TLS
+        // The compiled thunk blocks remain 16 KiB even on a kernel using
+        // smaller pages. Align the mapping independently of the OS page size.
+        ret = vm_map(mach_task_self(), &addr, templateSize * 2, templateSize - 1,
+            VM_FLAGS_ANYWHERE, MACH_PORT_NULL, 0, FALSE,
+            VM_PROT_READ | VM_PROT_WRITE, VM_PROT_ALL, VM_INHERIT_COPY);
+#else
         ret = vm_allocate(mach_task_self(), &addr, templateSize * 2, VM_FLAGS_ANYWHERE);
+#endif
     } while (ret == KERN_ABORTED);
 
     if (ret != KERN_SUCCESS)
@@ -680,8 +708,8 @@ UInt32_BOOL PalMarkThunksAsValidCallTargets(
     int thunkBlocksPerMapping)
 {
     int ret = mprotect(
-        (void*)((uintptr_t)virtualAddress + (thunkBlocksPerMapping * OS_PAGE_SIZE)),
-        thunkBlocksPerMapping * OS_PAGE_SIZE,
+        (void*)((uintptr_t)virtualAddress + (thunkBlocksPerMapping * thunkBlockSize)),
+        thunkBlocksPerMapping * thunkBlockSize,
         PROT_READ | PROT_WRITE);
     return ret == 0 ? UInt32_TRUE : UInt32_FALSE;
 }

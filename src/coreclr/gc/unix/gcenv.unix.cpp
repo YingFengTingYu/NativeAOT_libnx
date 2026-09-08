@@ -451,12 +451,15 @@ void GCToOSInterface::FlushProcessWriteBuffers()
         kern_return_t machret = task_threads(mach_task_self(), &pThreads, &cThreads);
         CHECK_MACH("task_threads()", machret);
 
+#if HAVE_THREAD_GET_REGISTER_POINTER_VALUES
         uintptr_t sp;
         uintptr_t registerValues[128];
+#endif
 
         // Iterate through each of the threads in the list.
         for (mach_msg_type_number_t i = 0; i < cThreads; i++)
         {
+#if HAVE_THREAD_GET_REGISTER_POINTER_VALUES
             if (__builtin_available (macOS 10.14, iOS 12, tvOS 9, *))
             {
                 // Request the threads pointer values to force the thread to emit a memory barrier
@@ -464,6 +467,7 @@ void GCToOSInterface::FlushProcessWriteBuffers()
                 machret = thread_get_register_pointer_values(pThreads[i], &sp, &registers, registerValues);
             }
             else
+#endif
             {
                 // fallback implementation for older OS versions
 #if defined(HOST_AMD64)

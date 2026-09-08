@@ -188,4 +188,6 @@ int main(void) {
   exit(0);
 }" HAVE_PROCFS_STATM)
 
+check_symbol_exists(thread_get_register_pointer_values "mach/mach.h" HAVE_THREAD_GET_REGISTER_POINTER_VALUES)
+
 configure_file(${CMAKE_CURRENT_LIST_DIR}/config.gc.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.gc.h)

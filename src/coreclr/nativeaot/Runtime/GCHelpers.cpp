@@ -405,12 +405,18 @@ FCIMPLEND
 
 // The MethodTable is remembered in some slow-path allocation paths. This value is used in event tracing.
 // It may statistically correlate with the most allocated type on the given stack/thread.
+#ifndef FEATURE_PTHREAD_TLS
 static PLATFORM_THREAD_LOCAL
 MethodTable* tls_pLastAllocationEEType = NULL;
+#endif
 
 MethodTable* GetLastAllocEEType()
 {
+#ifdef FEATURE_PTHREAD_TLS
+    return static_cast<MethodTable*>(PalGetPthreadLastAllocationType());
+#else
     return tls_pLastAllocationEEType;
+#endif
 }
 
 FCIMPL0(int64_t, RhGetTotalAllocatedBytes)
@@ -571,7 +577,11 @@ static Object* GcAllocInternal(MethodTable* pEEType, uint32_t uFlags, uintptr_t 
     }
 
     // Save the MethodTable for instrumentation purposes.
+#ifdef FEATURE_PTHREAD_TLS
+    PalSetPthreadLastAllocationType(pEEType);
+#else
     tls_pLastAllocationEEType = pEEType;
+#endif
 
     // check for dynamic allocation sampling
     ee_alloc_context* pEEAllocContext = pThread->GetEEAllocContext();

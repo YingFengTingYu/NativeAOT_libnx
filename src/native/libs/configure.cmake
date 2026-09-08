@@ -554,8 +554,13 @@ if(CLR_CMAKE_TARGET_IOS)
     # Manually set results from check_c_source_runs() since it's not possible to actually run it during CMake configure checking
     unset(HAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP)
     unset(HAVE_ALIGNED_ALLOC)   # only exists on iOS 13+
-    set(HAVE_CLOCK_MONOTONIC 1)
-    set(HAVE_CLOCK_REALTIME 1)
+    if(CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "10.0")
+        set(HAVE_CLOCK_MONOTONIC 0)
+        set(HAVE_CLOCK_REALTIME 0)
+    else()
+        set(HAVE_CLOCK_MONOTONIC 1)
+        set(HAVE_CLOCK_REALTIME 1)
+    endif()
     unset(HAVE_FORK) # exists but blocked by kernel
 elseif(CLR_CMAKE_TARGET_MACCATALYST)
     # Manually set results from check_c_source_runs() since it's not possible to actually run it during CMake configure checking
@@ -650,6 +655,10 @@ check_symbol_exists(
     clock_gettime_nsec_np
     time.h
     HAVE_CLOCK_GETTIME_NSEC_NP)
+
+if(CLR_CMAKE_TARGET_IOS AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "10.0")
+    set(HAVE_CLOCK_GETTIME_NSEC_NP 0)
+endif()
 
 check_library_exists(pthread pthread_create "" HAVE_LIBPTHREAD)
 check_library_exists(c pthread_create "" HAVE_PTHREAD_IN_LIBC)
@@ -892,6 +901,9 @@ check_include_files(
 check_include_files(
     "net/if.h"
     HAVE_NET_IF_H)
+
+check_include_files(net/if_types.h HAVE_NET_IF_TYPES_H)
+check_include_files(sys/socketvar.h HAVE_SYS_SOCKETVAR_H)
 
 check_include_files(
     "pthread.h"

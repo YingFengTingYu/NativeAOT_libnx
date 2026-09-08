@@ -106,6 +106,18 @@ namespace ILCompiler
 
             TargetArchitecture targetArchitecture = Get(_command.TargetArchitecture);
             TargetOS targetOS = Get(_command.TargetOS);
+            Version machOMinimumOSVersion = null;
+            string minimumOSVersionArgument = Get(_command.MachOMinimumOSVersion);
+            if (minimumOSVersionArgument is not null)
+            {
+                if (targetOS is not (TargetOS.OSX or TargetOS.MacCatalyst or TargetOS.iOS or TargetOS.iOSSimulator or TargetOS.tvOS or TargetOS.tvOSSimulator))
+                    throw new CommandLineException("--macho-minimum-os-version requires an Apple target OS");
+                if (!Version.TryParse(minimumOSVersionArgument, out machOMinimumOSVersion) ||
+                    machOMinimumOSVersion.Major == 0 || machOMinimumOSVersion.Major > ushort.MaxValue ||
+                    machOMinimumOSVersion.Minor > byte.MaxValue || machOMinimumOSVersion.Build > byte.MaxValue ||
+                    machOMinimumOSVersion.Revision >= 0)
+                    throw new CommandLineException("Invalid Mach-O deployment version; expected major.minor[.patch] with 16/8/8-bit components");
+            }
             InstructionSetSupport instructionSetSupport = Helpers.ConfigureInstructionSetSupport(Get(_command.InstructionSet), Get(_command.MaxVectorTBitWidth), isVectorTOptimistic, targetArchitecture, targetOS,
                 "Unrecognized instruction set {0}", "Unsupported combination of instruction sets: {0}/{1}", logger,
                 optimizingForSize: _command.OptimizationMode == OptimizationMode.PreferSize);
@@ -122,7 +134,7 @@ namespace ILCompiler
 
             var simdVectorLength = instructionSetSupport.GetVectorTSimdVector();
             var targetAbi = ILCompilerRootCommand.IsArmel ? TargetAbi.NativeAotArmel : TargetAbi.NativeAot;
-            var targetDetails = new TargetDetails(targetArchitecture, targetOS, targetAbi, simdVectorLength);
+            var targetDetails = new TargetDetails(targetArchitecture, targetOS, targetAbi, simdVectorLength, machOMinimumOSVersion);
             CompilerTypeSystemContext typeSystemContext =
                 new CompilerTypeSystemContext(targetDetails, genericsMode, supportsReflection ? DelegateFeature.All : 0,
                     genericCycleDepthCutoff: Get(_command.MaxGenericCycleDepth),

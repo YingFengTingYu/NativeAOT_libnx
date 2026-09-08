@@ -194,6 +194,11 @@ if (CLR_CMAKE_TARGET_APPLE)
   )
 endif (CLR_CMAKE_TARGET_APPLE)
 
+if(CLR_CMAKE_NATIVEAOT_USE_PTHREAD_TLS)
+  list(APPEND COMMON_RUNTIME_SOURCES unix/PthreadTls.cpp)
+  list(APPEND FULL_RUNTIME_SOURCES arm64/PthreadTls.S)
+endif()
+
 if (CLR_CMAKE_TARGET_ARCH_AMD64)
   set(VXSORT_SOURCES
     ${GC_DIR}/vxsort/isa_detection.cpp

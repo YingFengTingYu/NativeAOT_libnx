@@ -163,6 +163,8 @@ namespace ILCompiler
             new("--targetarch") { CustomParser = MakeTargetArchitecture, DefaultValueFactory = MakeTargetArchitecture, Description = "Target architecture for cross compilation", HelpName = "arg" };
         public Option<TargetOS> TargetOS { get; } =
             new("--targetos") { CustomParser = result => Helpers.GetTargetOS(result.Tokens.Count > 0 ? result.Tokens[0].Value : null), DefaultValueFactory = result => Helpers.GetTargetOS(result.Tokens.Count > 0 ? result.Tokens[0].Value : null), Description = "Target OS for cross compilation", HelpName = "arg" };
+        public Option<string> MachOMinimumOSVersion { get; } =
+            new("--macho-minimum-os-version") { Description = "Minimum OS version recorded in Mach-O output; requires compatible runtime libraries", HelpName = "version" };
         public Option<string> JitPath { get; } =
             new("--jitpath") { Description = "Path to JIT compiler library" };
         public Option<string> SingleMethodTypeName { get; } =
@@ -265,6 +267,7 @@ namespace ILCompiler
             Options.Add(RootDefaultAssemblies);
             Options.Add(TargetArchitecture);
             Options.Add(TargetOS);
+            Options.Add(MachOMinimumOSVersion);
             Options.Add(JitPath);
             Options.Add(SingleMethodTypeName);
             Options.Add(SingleMethodName);

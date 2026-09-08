@@ -40,6 +40,32 @@ int64_t minipal_lowres_ticks()
 #include <sys/time.h>
 #include <errno.h>
 
+#if HAVE_MACH_ABSOLUTE_TIME && !HAVE_CLOCK_GETTIME_NSEC_NP && !HAVE_CLOCK_MONOTONIC
+#include <mach/mach_time.h>
+#include <pthread.h>
+
+static mach_timebase_info_data_t s_machTimebase;
+static pthread_once_t s_machTimebaseOnce = PTHREAD_ONCE_INIT;
+
+static void InitializeMachTimebase(void)
+{
+    kern_return_t result = mach_timebase_info(&s_machTimebase);
+    assert(result == KERN_SUCCESS);
+    (void)result;
+}
+
+static uint64_t MachTimeNanoseconds(void)
+{
+    pthread_once(&s_machTimebaseOnce, InitializeMachTimebase);
+    uint64_t ticks = mach_absolute_time();
+
+    // Divide first so the intermediate multiplication does not overflow
+    // when converting a long uptime with a non-unit Mach timebase.
+    return (ticks / s_machTimebase.denom) * s_machTimebase.numer +
+        ((ticks % s_machTimebase.denom) * s_machTimebase.numer) / s_machTimebase.denom;
+}
+#endif
+
 inline static void YieldProcessor(void);
 
 inline static void YieldProcessor(void)
@@ -86,6 +112,8 @@ int64_t minipal_hires_ticks(void)
     }
 
     return ((int64_t)(ts.tv_sec) * (int64_t)(tccSecondsToNanoSeconds)) + (int64_t)(ts.tv_nsec);
+#elif HAVE_MACH_ABSOLUTE_TIME
+    return (int64_t)MachTimeNanoseconds();
 #else
     #error "minipal_hires_ticks requires clock_gettime_nsec_np or clock_gettime to be supported."
 #endif
@@ -120,6 +148,8 @@ int64_t minipal_lowres_ticks(void)
     }
 
     return ((int64_t)(ts.tv_sec) * (int64_t)(tccSecondsToMilliSeconds)) + ((int64_t)(ts.tv_nsec) / (int64_t)(tccMilliSecondsToNanoSeconds));
+#elif HAVE_MACH_ABSOLUTE_TIME
+    return (int64_t)(MachTimeNanoseconds() / tccMilliSecondsToNanoSeconds);
 #else
     #error "minipal_lowres_ticks requires clock_gettime_nsec_np or clock_gettime to be supported."
 #endif

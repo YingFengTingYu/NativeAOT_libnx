@@ -430,13 +430,17 @@ FCIMPLEND
 
 C_ASSERT(sizeof(Thread) == sizeof(RuntimeThreadLocals));
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(FEATURE_PTHREAD_TLS)
 PLATFORM_THREAD_LOCAL RuntimeThreadLocals tls_CurrentThread;
 #endif
 
+#ifdef FEATURE_PTHREAD_TLS
+EXTERN_C RuntimeThreadLocals* RhpGetThreadPthread()
+#else
 EXTERN_C RuntimeThreadLocals* RhpGetThread()
+#endif
 {
-    return &tls_CurrentThread;
+    return (RuntimeThreadLocals*)ThreadStore::RawGetCurrentThread();
 }
 
 #if defined(TARGET_UNIX) && !defined(TARGET_WASM)

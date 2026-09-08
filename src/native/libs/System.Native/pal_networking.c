@@ -44,7 +44,7 @@
 #include <sys/sockio.h>
 #endif
 #include <sys/un.h>
-#if defined(__APPLE__) && __APPLE__
+#if HAVE_SYS_SOCKETVAR_H
 #include <sys/socketvar.h>
 #endif
 #if !HAVE_GETDOMAINNAME && HAVE_UTSNAME_DOMAINNAME
@@ -1295,7 +1295,9 @@ int32_t SystemNative_SetIPv6MulticastOption(intptr_t socket, int32_t multicastOp
 static int32_t GetMaxLingerTime(void)
 {
     static volatile int32_t MaxLingerTime = -1;
+#if HAVE_SYS_SOCKETVAR_H
     c_static_assert(sizeof_member(xsocket, so_linger) == 2);
+#endif
 
     // OS X does not define the linger time in seconds by default, but in ticks.
     // Furthermore, when SO_LINGER_SEC is used, the value is simply scaled by

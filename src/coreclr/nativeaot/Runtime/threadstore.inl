@@ -1,17 +1,25 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+#ifdef FEATURE_PTHREAD_TLS
+#include "PthreadTls.h"
+#else
 EXTERN_C
 #ifdef _MSC_VER
 // a workaround to prevent tls_CurrentThread from becoming dynamically checked/initialized.
 __declspec(selectany)
 #endif
 PLATFORM_THREAD_LOCAL RuntimeThreadLocals tls_CurrentThread;
+#endif
 
 // static
 inline Thread * ThreadStore::RawGetCurrentThread()
 {
+#ifdef FEATURE_PTHREAD_TLS
+    return (Thread*)PalGetPthreadRuntimeThreadLocals();
+#else
     return (Thread *) &tls_CurrentThread;
+#endif
 }
 
 // static

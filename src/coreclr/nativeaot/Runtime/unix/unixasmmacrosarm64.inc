@@ -297,7 +297,7 @@ C_FUNC(\Name):
     stp         x6, x7, [sp, #0x40]
     stp         x8, xip0, [sp, #0x50]
 
-    bl RhpGetThunkData
+    bl C_FUNC(RhpGetThunkData)
     mov x9, x0
 
     ldp         x0, x1, [sp, #0x10]

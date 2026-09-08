@@ -1,16 +1,30 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+
 namespace Internal.TypeSystem
 {
     // Extension to TargetDetails related to code generation
     public partial class TargetDetails
     {
         public TargetDetails(TargetArchitecture architecture, TargetOS targetOS, TargetAbi abi, SimdVectorLength simdVectorLength)
+            : this(architecture, targetOS, abi, simdVectorLength, null)
+        {
+        }
+
+        public TargetDetails(TargetArchitecture architecture, TargetOS targetOS, TargetAbi abi, SimdVectorLength simdVectorLength, Version machOMinimumOSVersion)
             : this(architecture, targetOS, abi)
         {
             MaximumSimdVectorLength = simdVectorLength;
+            MachOMinimumOSVersion = machOMinimumOSVersion;
         }
+
+        /// <summary>
+        /// Optional deployment version recorded in Mach-O output. Runtime
+        /// compatibility must be provided by the selected runtime libraries.
+        /// </summary>
+        public Version MachOMinimumOSVersion { get; }
 
         /// <summary>
         /// Specifies the maximum size of native vectors on the target architecture.

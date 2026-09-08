@@ -10,6 +10,7 @@
 #include "gcenv.base.h"
 #include "gcenv.os.h"
 #include "globals.h"
+#include <minipal/time.h>
 
 namespace
 {
@@ -28,7 +29,7 @@ void TimeSpecAdd(timespec* time, uint32_t milliseconds)
 }
 #endif // HAVE_PTHREAD_CONDATTR_SETCLOCK
 
-#if HAVE_CLOCK_GETTIME_NSEC_NP
+#if defined(TARGET_APPLE)
 // Convert nanoseconds to the timespec structure
 // Parameters:
 //  nanoseconds - time in nanoseconds to convert
@@ -38,7 +39,7 @@ void NanosecondsToTimeSpec(uint64_t nanoseconds, timespec* t)
     t->tv_sec = nanoseconds / tccSecondsToNanoSeconds;
     t->tv_nsec = nanoseconds % tccSecondsToNanoSeconds;
 }
-#endif // HAVE_CLOCK_GETTIME_NSEC_NP
+#endif // TARGET_APPLE
 
 } // anonymous namespace
 
@@ -72,7 +73,7 @@ public:
         // TODO(segilles) implement this for CoreCLR
         //PthreadCondAttrHolder attrsHolder(&attrs);
 
-#if HAVE_PTHREAD_CONDATTR_SETCLOCK && !HAVE_CLOCK_GETTIME_NSEC_NP
+#if HAVE_PTHREAD_CONDATTR_SETCLOCK && !defined(TARGET_APPLE)
         // Ensure that the pthread_cond_timedwait will use CLOCK_MONOTONIC
         st = pthread_condattr_setclock(&attrs, CLOCK_MONOTONIC);
         if (st != 0)
@@ -80,7 +81,7 @@ public:
             assert(!"Failed to set UnixEvent condition variable wait clock");
             return false;
         }
-#endif // HAVE_PTHREAD_CONDATTR_SETCLOCK && !HAVE_CLOCK_GETTIME_NSEC_NP
+#endif // HAVE_PTHREAD_CONDATTR_SETCLOCK && !defined(TARGET_APPLE)
 
         st = pthread_mutex_init(&m_mutex, NULL);
         if (st != 0)
@@ -121,13 +122,13 @@ public:
         UNREFERENCED_PARAMETER(alertable);
 
         timespec endTime;
-#if HAVE_CLOCK_GETTIME_NSEC_NP
+#if defined(TARGET_APPLE)
         uint64_t endMachTime;
         if (milliseconds != INFINITE)
         {
             uint64_t nanoseconds = (uint64_t)milliseconds * tccMilliSecondsToNanoSeconds;
             NanosecondsToTimeSpec(nanoseconds, &endTime);
-            endMachTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) + nanoseconds;
+            endMachTime = (uint64_t)minipal_hires_ticks() + nanoseconds;
         }
 #elif HAVE_PTHREAD_CONDATTR_SETCLOCK
         if (milliseconds != INFINITE)
@@ -150,13 +151,13 @@ public:
             }
             else
             {
-#if HAVE_CLOCK_GETTIME_NSEC_NP
-                // Since OSX doesn't support CLOCK_MONOTONIC, we use relative variant of the
-                // timed wait and we need to handle spurious wakeups properly.
+#if defined(TARGET_APPLE)
+                // Apple condition variables support relative waits. Use the minipal
+                // monotonic clock to account for spurious wakeups on older systems too.
                 st = pthread_cond_timedwait_relative_np(&m_condition, &m_mutex, &endTime);
                 if ((st == 0) && !m_state)
                 {
-                    uint64_t machTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+                    uint64_t machTime = (uint64_t)minipal_hires_ticks();
                     if (machTime < endMachTime)
                     {
                         // The wake up was spurious, recalculate the relative endTime
@@ -171,9 +172,9 @@ public:
                         st = ETIMEDOUT;
                     }
                 }
-#else // HAVE_CLOCK_GETTIME_NSEC_NP
+#else // TARGET_APPLE
                 st = pthread_cond_timedwait(&m_condition, &m_mutex, &endTime);
-#endif // HAVE_CLOCK_GETTIME_NSEC_NP
+#endif // TARGET_APPLE
             }
 
             if (st != 0)

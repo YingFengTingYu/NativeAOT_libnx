@@ -18,6 +18,8 @@
 #include <unistd.h>
 #endif
 #if defined(__APPLE__) && __APPLE__
+#include <Availability.h>
+#include <CommonCrypto/CommonCryptoError.h>
 #include <CommonCrypto/CommonRandom.h>
 #endif
 
@@ -89,12 +91,19 @@ int32_t minipal_get_cryptographically_secure_random_bytes(uint8_t* buffer, int32
             return 0;
     }
 #elif defined(__APPLE__) && __APPLE__
+#if defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED < 80000
+    // CCRandomGenerateBytes was introduced in iOS 8. arc4random_buf is a
+    // system CSPRNG available since iOS 4.3 and has no failure return.
+    arc4random_buf(buffer, (size_t)bufferLength);
+    return 0;
+#else
     CCRNGStatus status = CCRandomGenerateBytes(buffer, (size_t)bufferLength);
 
     if (status == kCCSuccess)
     {
         return 0;
     }
+#endif
 #elif HAVE_BCRYPT_H
     NTSTATUS status = BCryptGenRandom(NULL, buffer, (ULONG)bufferLength, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
     return BCRYPT_SUCCESS(status) ? 0 : -1;

@@ -81,7 +81,8 @@ static inline size_t minipal_get_current_thread_id_no_cache(void)
  */
 static inline size_t minipal_get_current_thread_id(void)
 {
-#if defined(__wasm) && !defined(_REENTRANT)
+#if (defined(__wasm) && !defined(_REENTRANT)) || defined(FEATURE_PTHREAD_TLS) || \
+    (defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__) && __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ < 80000)
     return minipal_get_current_thread_id_no_cache();
 
 #else // !__wasm || _REENTRANT

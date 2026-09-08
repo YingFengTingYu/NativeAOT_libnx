@@ -126,7 +126,11 @@ struct ee_alloc_context
         double NextDouble();
     };
 
+#ifdef FEATURE_PTHREAD_TLS
+    static PerThreadRandom& GetThreadRandom();
+#else
     static thread_local PerThreadRandom t_random;
+#endif
 };
 
 

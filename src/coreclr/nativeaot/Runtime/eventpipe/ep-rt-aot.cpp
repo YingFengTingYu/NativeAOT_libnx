@@ -242,21 +242,43 @@ ep_rt_aot_diagnostics_command_line_get (void)
 
 namespace
 {
+#ifdef FEATURE_PTHREAD_TLS
+    EventPipeThreadHolder* GetEventPipeThreadHolder()
+    {
+        return static_cast<EventPipeThreadHolder*>(PalGetPthreadEventPipeThreadHolder());
+    }
+
+    void SetEventPipeThreadHolder(EventPipeThreadHolder* holder)
+    {
+        PalSetPthreadEventPipeThreadHolder(holder);
+    }
+#else
     PLATFORM_THREAD_LOCAL EventPipeThreadHolder* eventpipe_tls_instance;
+
+    EventPipeThreadHolder* GetEventPipeThreadHolder()
+    {
+        return eventpipe_tls_instance;
+    }
+
+    void SetEventPipeThreadHolder(EventPipeThreadHolder* holder)
+    {
+        eventpipe_tls_instance = holder;
+    }
+#endif
 
     void free_thread_holder ()
     {
-        EventPipeThreadHolder *thread_holder = eventpipe_tls_instance;
+        EventPipeThreadHolder *thread_holder = GetEventPipeThreadHolder();
         if (thread_holder != NULL) {
             thread_holder_free_func (thread_holder);
-            eventpipe_tls_instance = NULL;
+            SetEventPipeThreadHolder(NULL);
         }
     }
 }
 
 EventPipeThread* ep_rt_aot_thread_get (void)
 {
-    EventPipeThreadHolder *thread_holder = eventpipe_tls_instance;
+    EventPipeThreadHolder *thread_holder = GetEventPipeThreadHolder();
     return thread_holder ? ep_thread_holder_get_thread (thread_holder) : NULL;
 }
 
@@ -266,8 +288,9 @@ EventPipeThread* ep_rt_aot_thread_get_or_create (void)
     if (thread != NULL)
         return thread;
 
-    eventpipe_tls_instance = thread_holder_alloc_func ();
-    return ep_thread_holder_get_thread (eventpipe_tls_instance);
+    EventPipeThreadHolder* holder = thread_holder_alloc_func ();
+    SetEventPipeThreadHolder(holder);
+    return ep_thread_holder_get_thread (holder);
 }
 
 void
