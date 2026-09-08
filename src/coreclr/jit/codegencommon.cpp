@@ -4028,9 +4028,9 @@ void CodeGen::genEnregisterOSRArgsAndLocals()
     }
 }
 
-#if defined(SWIFT_SUPPORT) || defined(TARGET_RISCV64) || defined(TARGET_LOONGARCH64)
+#if defined(SWIFT_SUPPORT) || defined(TARGET_RISCV64) || defined(TARGET_LOONGARCH64) || defined(TARGET_ARM)
 //-----------------------------------------------------------------------------
-// genHomeSwiftStructParameters: Move the incoming stack segment to the local stack frame.
+// genHomeStackSegment: Move an incoming stack segment to the local stack frame.
 //
 // Arguments:
 //    lclNum - Number of local variable to home
@@ -4080,6 +4080,8 @@ void CodeGen::genHomeStackSegment(unsigned                 lclNum,
 
 #ifdef TARGET_XARCH
     GetEmitter()->emitIns_R_AR(ins_Load(loadType), size, initReg, genFramePointerReg(), loadOffset);
+#elif defined(TARGET_ARM)
+    genInstrWithConstant(ins_Load(loadType), size, initReg, genFramePointerReg(), loadOffset, INS_FLAGS_DONT_CARE, initReg);
 #else
     genInstrWithConstant(ins_Load(loadType), size, initReg, genFramePointerReg(), loadOffset, initReg);
 #endif
@@ -4088,7 +4090,7 @@ void CodeGen::genHomeStackSegment(unsigned                 lclNum,
     if (initRegStillZeroed)
         *initRegStillZeroed = false;
 }
-#endif // defined(SWIFT_SUPPORT) || defined(TARGET_RISCV64) || defined(TARGET_LOONGARCH64)
+#endif // SWIFT_SUPPORT || TARGET_RISCV64 || TARGET_LOONGARCH64 || TARGET_ARM
 
 #ifdef SWIFT_SUPPORT
 
@@ -4141,12 +4143,22 @@ void CodeGen::genHomeSwiftStructStackParameters()
 //
 void CodeGen::genHomeStackPartOfSplitParameter(regNumber initReg, bool* initRegStillZeroed)
 {
-#if defined(TARGET_RISCV64) || defined(TARGET_LOONGARCH64)
+#if defined(TARGET_RISCV64) || defined(TARGET_LOONGARCH64) || defined(TARGET_ARM)
+#ifdef TARGET_ARM
+    if (!TargetOS::IsApplePlatform)
+        return;
+#endif
     unsigned lclNum = 0;
     for (; lclNum < compiler->info.compArgsCount; lclNum++)
     {
         LclVarDsc* var = compiler->lvaGetDesc(lclNum);
-        if (!var->lvOnFrame || !varTypeIsStruct(var))
+        if (!var->lvOnFrame
+#ifdef TARGET_ARM
+            || varTypeIsStruct(var) // ARM structs already use the prespill strategy.
+#else
+            || !varTypeIsStruct(var)
+#endif
+            )
         {
             continue;
         }
@@ -4174,7 +4186,7 @@ void CodeGen::genHomeStackPartOfSplitParameter(regNumber initReg, bool* initRegS
             break;
         }
     }
-#endif // TARGET_RISCV64 || TARGET_LOONGARCH64
+#endif // TARGET_RISCV64 || TARGET_LOONGARCH64 || TARGET_ARM
 }
 
 /*-----------------------------------------------------------------------------

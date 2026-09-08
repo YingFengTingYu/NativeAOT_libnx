@@ -949,6 +949,16 @@ LinearScan::LinearScan(Compiler* theCompiler)
     availableIntRegs = (RBM_ALLINT & ~compiler->codeGen->regSet.rsMaskResvd).GetIntRegSet();
 #endif
 
+#ifdef TARGET_ARM
+    if (TargetOS::IsApplePlatform)
+    {
+        // Darwin ARM treats r9 as volatile. Keep it out of the allocator until
+        // all ARM helper-specific kill sets model that convention explicitly.
+        compiler->codeGen->regSet.rsMaskResvd |= RBM_R9;
+        availableIntRegs &= ~RBM_R9.GetIntRegSet();
+    }
+#endif
+
 #if ETW_EBP_FRAMED
     availableIntRegs &= ~RBM_FPBASE.GetIntRegSet();
 #endif // ETW_EBP_FRAMED

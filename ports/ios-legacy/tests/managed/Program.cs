@@ -15,6 +15,7 @@ internal static class Program
     private static int s_threadMarker;
     private static int s_finalized;
     private static int s_callbackCount;
+    private static int s_splitHighWord;
 
     private sealed class Finalizable
     {
@@ -204,6 +205,21 @@ internal static class Program
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static long ForwardSplitArgument(int a, int b, int c, long value)
+    {
+        try
+        {
+            return SplitInt64(a, b, c, value);
+        }
+        finally
+        {
+            // Keep both halves live across a call and an EH region so the
+            // incoming stack half needs a correct local home on Darwin ARM.
+            Volatile.Write(ref s_splitHighWord, (int)(value >> 32));
+        }
+    }
+
     private static void CheckCallbacks()
     {
         const long marker = 0x1234567890ABCDE;
@@ -211,6 +227,8 @@ internal static class Program
         Check(SplitDouble(11, 22, 33, 2.5) == 68.5, "P/Invoke split double failed");
         Check(OddInt64(11, marker, 22) == marker + 33, "P/Invoke int64 after an odd register slot failed");
         Check(SplitInt64(11, 22, 33, marker) == marker + 66, "P/Invoke split int64 failed");
+        Check(ForwardSplitArgument(11, 22, 33, marker) == marker + 66 &&
+            Volatile.Read(ref s_splitHighWord) == (int)(marker >> 32), "Incoming split int64 parameter home failed");
         OddDoubleCallback oddCallback = (a, b, c) =>
         {
             GC.Collect();

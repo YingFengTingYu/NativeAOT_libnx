@@ -268,7 +268,7 @@ static bool InWriteBarrierHelper(uintptr_t faultingIP)
         ASSERT(*(uint8_t*)writeBarrierAVLocations[i] != 0xE9); // jmp XXXXXXXX
 #endif
 
-        if (writeBarrierAVLocations[i] == faultingIP)
+        if (PCODEToPINSTR(writeBarrierAVLocations[i]) == faultingIP)
             return true;
     }
 #endif // USE_PORTABLE_HELPERS
@@ -309,7 +309,7 @@ static bool InInterfaceDispatchHelper(uintptr_t faultingIP)
         ASSERT(*(uint8_t*)interfaceDispatchAVLocations[i] != 0xE9); // jmp XXXXXXXX
 #endif
 
-        if (interfaceDispatchAVLocations[i] == faultingIP)
+        if (PCODEToPINSTR(interfaceDispatchAVLocations[i]) == faultingIP)
             return true;
     }
 #endif // USE_PORTABLE_HELPERS

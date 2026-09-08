@@ -203,6 +203,11 @@ const char *CFI_Parser<A>::decodeFDE(A &addressSpace, pint_t fdeStart,
   // Parse pc begin and range.
   pint_t pcStart =
       addressSpace.getEncodedP(p, nextCFI, cieInfo->pointerEncoding);
+#if defined(__APPLE__) && defined(__arm__)
+  // Mach-O data relocations preserve the Thumb bit on function symbols.
+  // DWARF instruction offsets are relative to the untagged instruction address.
+  pcStart &= ~(pint_t)1;
+#endif
   pint_t pcRange =
       addressSpace.getEncodedP(p, nextCFI, cieInfo->pointerEncoding & 0x0F);
   // Parse rest of info.
@@ -270,6 +275,9 @@ bool CFI_Parser<A>::findFDE(A &addressSpace, pint_t pc, pint_t ehSectionStart,
           // Parse pc begin and range.
           pint_t pcStart =
               addressSpace.getEncodedP(p, nextCFI, cieInfo->pointerEncoding);
+#if defined(__APPLE__) && defined(__arm__)
+          pcStart &= ~(pint_t)1;
+#endif
           pint_t pcRange = addressSpace.getEncodedP(
               p, nextCFI, cieInfo->pointerEncoding & 0x0F);
           // Test if pc is within the function this FDE covers.

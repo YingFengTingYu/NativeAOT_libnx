@@ -1,6 +1,6 @@
-# NativeAOT：旧版 iOS ARM64 适配
+# NativeAOT：旧版 iOS ARM 适配
 
-本目录从现有 `ios-arm64` NativeAOT 向下适配 iOS 7，不依赖 macios 托管绑定。当前已构建运行时、`System.Native` 和 C# 命令行探针；同一套 pthread TLS 实现在 Apple Silicon Mac 和 iOS 10.0.2 的 iPad mini 4 上均通过全部 7 组功能测试。**尚未在真实 iOS 7 设备上验证，不能据此宣称完整支持 iOS 7。**
+本目录从现有 `ios-arm64` NativeAOT 向下适配 iOS 7，不依赖 macios 托管绑定。当前已构建 ARM64 与 ARMv7 的运行时、`System.Native` 和 C# 命令行探针；两种架构均在 iOS 10.0.2 的 iPad mini 4 上通过全部 7 组功能测试，Apple Silicon Mac 回归也通过。**尚未在真实 iOS 7 设备上验证，不能据此宣称完整支持 iOS 7。**
 
 ## 固定基线与分支
 
@@ -8,7 +8,7 @@
 - 基线：`v10.0.7`，提交 `7706f546bac1a99b3d891afe3591dc88c67f0cc4`。
 - 官方托管库和运行时包版本：`10.0.7`。
 - 分支：`codex/legacy-ios-arm64`。
-- ARM32 实验分支：`codex/legacy-ios-arm32`，当前验证状态见 [ARM32 记录](results/2026-09-08-arm32.md)。
+- ARM32 实验分支：`codex/legacy-ios-arm32`，真机结果见 [ARM32 验证记录](results/2026-09-09-arm32.md)。
 - 原生构建：Xcode 26.3 / Apple Clang 17、iOS 9.3 SDK、最低部署版本 7.0。
 
 现有 `YingFengTingYu/NativeAOT_libnx` 已经是官方仓库的 fork，可以在其中维护这个独立分支，无需重新 fork。首次获取时可按下面的方式建立本地分支；已有本目录时不必重复克隆：
@@ -30,7 +30,7 @@ git switch -c codex/legacy-ios-arm64
 6. 补齐旧 SDK 未暴露的 Darwin 网络类型常量，并修正基础库对旧系统时钟接口的假设。
 7. 为 ILCompiler 添加显式的 Mach-O 最低版本参数；未指定时保留上游默认值。
 
-这不是完整的旧 iOS runtime-pack。当前探针没有使用 CryptoKit、Network.framework 或 Swift 支持库，因此只在探针的链接配置中移除了这些现代框架。完整加密、TLS/HTTP、非 invariant 全球化、游戏集成和 ARM32 真机运行尚未验收。
+这不是完整的旧 iOS runtime-pack。当前探针没有使用 CryptoKit、Network.framework 或 Swift 支持库，因此只在探针的链接配置中移除了这些现代框架。复杂结构体互操作、完整加密、TLS/HTTP、非 invariant 全球化和游戏集成尚未验收。
 
 ## 环境
 
@@ -85,7 +85,7 @@ python3 ports/ios-legacy/build-probe.py --platform osx
 
 ## ARM32 实验构建
 
-ARM32 目标为 iOS 7 ARMv7。已经构建并链接原生运行时、CoreLib、基础库和两个 NativeAOT 探针；在 iOS 10.0.2 的 iPad mini 4 上仅完成了普通 ARMv7 C 程序验证，NativeAOT 真机测试仍待执行。
+ARM32 目标为 iOS 7 ARMv7。已经构建并链接原生运行时、CoreLib、基础库和两个 NativeAOT 探针；在 iOS 10.0.2 的 iPad mini 4 上，ARM32 NativeAOT 已通过全部七组测试和新增的参数传递回归。iOS 7 真机兼容性仍未验证。
 
 先构建在 Apple Silicon Mac 上运行的编译器和 ARM 代码生成后端，再构建目标运行时。第一条命令的 `arm64` 是宿主工具构建配置；后续 `arm` 才是待运行程序的目标架构。
 
@@ -104,7 +104,7 @@ ARM32 脚本直接使用源码构建的 `ios.arm` CoreLib 和基础库，不依�
 - `artifacts/legacy-ios/probes/ios-arm/minimal/ArmHello`：托管入口与一次 P/Invoke。
 - `artifacts/legacy-ios/probes/ios-arm/full/LegacyIOSProbe32`：七组测试，回调组还检查 64 位参数处于奇数寄存器槽及横跨寄存器/栈时的 ABI。
 
-设备启动方式沿用下文的系统目录方案。ARM32 探针可以放在 `/usr/local/libexec/NativeAOTProbe-arm32`，并记录完整输出及退出码。编译、链接和静态检查通过仍不能证明 ARM32 NativeAOT 已经在真机工作。
+设备启动方式沿用下文的系统目录方案。ARM32 探针可以放在 `/usr/local/libexec/NativeAOTProbe-arm32`，并记录完整输出及退出码。本轮实机结果与 ABI 修复详见 [2026-09-09 ARM32 验证记录](results/2026-09-09-arm32.md)。
 
 ## 接入其他托管项目时的必要设置
 

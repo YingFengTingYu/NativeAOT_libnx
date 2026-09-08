@@ -53,6 +53,9 @@ def main():
     report["passed"] = architecture == expected_architecture and versions == [("7.0", "9.3")] and not (
         tls_sections or suspect_imports or suspect_libraries)
     if args.arch == "arm":
+        dwarf_sections = re.findall(r"sectname __aot_eh_frame\s+segname __TEXT\s+addr (0x[0-9a-fA-F]+)\s+size (0x[0-9a-fA-F]+)", commands)
+        report["managed_dwarf_sections"] = dwarf_sections
+        report["passed"] &= len(dwarf_sections) == 1 and int(dwarf_sections[0][1], 16) > 0
         symbols = output("xcrun", "nm", "-m", str(binary))
         runtime_globals = [line for line in symbols.splitlines()
                            if line.endswith((" ___security_cookie", " _RhpTrapThreads"))]

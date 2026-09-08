@@ -1670,9 +1670,17 @@ void Lowering::SplitArgumentBetweenRegistersAndStack(GenTreeCall* call, CallArg*
     JITDUMP("Dividing split arg [%06u] with %u registers, %u stack space into two arguments\n",
             Compiler::dspTreeID(arg), numRegs, stackSeg.Size);
 
-    ClassLayout* registersLayout = SliceLayout(callArg->GetSignatureLayout(), 0, stackSeg.Offset);
-    ClassLayout* stackLayout     = SliceLayout(callArg->GetSignatureLayout(), stackSeg.Offset,
-                                               callArg->GetSignatureLayout()->GetSize() - stackSeg.Offset);
+    ClassLayout* signatureLayout = callArg->GetSignatureLayout();
+    if (signatureLayout == nullptr)
+    {
+        // Darwin ARM can split a primitive 64-bit argument between r3 and the
+        // stack. LowerArg has already decomposed it into two integer fields.
+        assert(callArg->GetSignatureType() == TYP_LONG || callArg->GetSignatureType() == TYP_DOUBLE);
+        signatureLayout = comp->typGetBlkLayout(genTypeSize(callArg->GetSignatureType()));
+    }
+    ClassLayout* registersLayout = SliceLayout(signatureLayout, 0, stackSeg.Offset);
+    ClassLayout* stackLayout     = SliceLayout(signatureLayout, stackSeg.Offset,
+                                               signatureLayout->GetSize() - stackSeg.Offset);
 
     GenTree* stackNode     = nullptr;
     GenTree* registersNode = nullptr;
@@ -1705,7 +1713,7 @@ void Lowering::SplitArgumentBetweenRegistersAndStack(GenTreeCall* call, CallArg*
             JITDUMP("No clean split point found, spilling FIELD_LIST\n", splitPoint->GetOffset());
 
             unsigned int newLcl =
-                StoreFieldListToNewLocal(comp->typGetObjLayout(callArg->GetSignatureClassHandle()), arg->AsFieldList());
+                StoreFieldListToNewLocal(signatureLayout, arg->AsFieldList());
             stackNode     = comp->gtNewLclFldNode(newLcl, TYP_STRUCT, stackSeg.Offset, stackLayout);
             registersNode = comp->gtNewLclFldNode(newLcl, TYP_STRUCT, 0, registersLayout);
             BlockRange().InsertBefore(arg, stackNode);

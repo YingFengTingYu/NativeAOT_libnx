@@ -338,7 +338,7 @@ namespace ILCompiler.ObjectWriter
                 "data" => "__data",
                 "rdata" => "__const",
                 "bss" => "__bss",
-                ".eh_frame" => "__eh_frame",
+                ".eh_frame" => Is64Bit ? "__eh_frame" : "__aot_eh_frame",
                 ".debug_info" => "__debug_info",
                 ".debug_abbrev" => "__debug_abbrev",
                 ".debug_ranges" => "__debug_ranges",
@@ -352,14 +352,14 @@ namespace ILCompiler.ObjectWriter
             uint flags = section.Name switch
             {
                 "bss" => S_ZEROFILL,
-                ".eh_frame" => S_COALESCED,
+                ".eh_frame" => Is64Bit ? S_COALESCED : S_REGULAR,
                 _ => section.Type == SectionType.Uninitialized ? S_ZEROFILL : S_REGULAR
             };
 
             flags |= section.Name switch
             {
                 ".dotnet_eh_table" => S_ATTR_DEBUG,
-                ".eh_frame" => S_ATTR_LIVE_SUPPORT | S_ATTR_STRIP_STATIC_SYMS | S_ATTR_NO_TOC,
+                ".eh_frame" => Is64Bit ? S_ATTR_LIVE_SUPPORT | S_ATTR_STRIP_STATIC_SYMS | S_ATTR_NO_TOC : S_ATTR_NO_DEAD_STRIP,
                 _ => section.Type switch
                 {
                     SectionType.Executable => S_ATTR_SOME_INSTRUCTIONS | S_ATTR_PURE_INSTRUCTIONS,

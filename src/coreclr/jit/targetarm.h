@@ -123,10 +123,10 @@
   #define REG_OPT_RSVD             REG_R10
   #define RBM_OPT_RSVD             RBM_R10
 
-  // We reserve R9 to store SP on entry for stack unwinding when localloc is used
+  // Use a native callee-saved register for the pre-localloc SP. Darwin's r9 is volatile.
   // This needs to stay in sync with the ARM version of InlinedCallFrame::UpdateRegDisplay code.
-  #define REG_SAVED_LOCALLOC_SP    REG_R9
-  #define RBM_SAVED_LOCALLOC_SP    RBM_R9
+  #define REG_SAVED_LOCALLOC_SP    (TargetOS::IsApplePlatform ? REG_R8 : REG_R9)
+  #define RBM_SAVED_LOCALLOC_SP    (TargetOS::IsApplePlatform ? RBM_R8 : RBM_R9)
 
   // Where is the exception object on entry to the handler block?
   #define REG_EXCEPTION_OBJECT     REG_R0

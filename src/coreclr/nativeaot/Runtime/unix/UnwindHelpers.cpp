@@ -1292,6 +1292,9 @@ bool UnwindHelpers::StepFrame(REGDISPLAY *regs, unw_word_t start_ip, uint32_t fo
 #endif
 
     uintptr_t pc = regs->GetIP();
+#ifdef TARGET_ARM
+    pc &= ~(uintptr_t)1;
+#endif
     bool isSignalFrame = false;
 
     DwarfInstructions<LocalAddressSpace, Registers_REGDISPLAY> dwarfInst;
@@ -1414,7 +1417,13 @@ bool _dyld_find_unwind_sections(void* addr, dyld_unwind_sections* info)
 
     // Initialize the return struct
     info->mh = (const struct mach_header *)mh;
-    info->dwarf_section = getsectiondata(mh, "__TEXT", "__eh_frame", &info->dwarf_section_length);
+#ifdef TARGET_ARM
+    // ld-classic discards standard ARMv7 __eh_frame records because iOS ARMv7
+    // uses SJLJ. Keep NativeAOT's managed DWARF table in an ordinary section.
+    info->dwarf_section = getsectiondata(mh, "__TEXT", "__aot_eh_frame", &info->dwarf_section_length);
+    if (!info->dwarf_section)
+#endif
+        info->dwarf_section = getsectiondata(mh, "__TEXT", "__eh_frame", &info->dwarf_section_length);
     info->compact_unwind_section = getsectiondata(mh, "__TEXT", "__unwind_info", &info->compact_unwind_section_length);
 
     if (!info->dwarf_section) {

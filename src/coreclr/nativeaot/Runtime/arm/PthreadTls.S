@@ -14,11 +14,10 @@
     .thumb_func _\Name
 _\Name:
     .cfi_startproc
-    push {r1-r3, r12, lr}
-    .cfi_def_cfa_offset 20
-    .cfi_offset lr, -4
-    sub sp, sp, #4
+    push {r1-r3, r9, r12, lr}
     .cfi_def_cfa_offset 24
+    .cfi_offset r9, -12
+    .cfi_offset lr, -4
     vpush {d0-d7}
     .cfi_def_cfa_offset 88
     vpush {d16-d31}
@@ -28,9 +27,7 @@ _\Name:
     .cfi_def_cfa_offset 88
     vpop {d0-d7}
     .cfi_def_cfa_offset 24
-    add sp, sp, #4
-    .cfi_def_cfa_offset 20
-    pop {r1-r3, r12, pc}
+    pop {r1-r3, r9, r12, pc}
     .cfi_endproc
 .endm
 

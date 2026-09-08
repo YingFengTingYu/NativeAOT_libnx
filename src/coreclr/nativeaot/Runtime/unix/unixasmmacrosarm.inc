@@ -14,6 +14,7 @@
 #define TSF_DoNotTriggerGc              0x10
 
 #define PTFF_SAVE_ALL_PRESERVED 0x0000007F  // NOTE: R11 is not included in this set!
+#define PTFF_SAVE_R8 0x00000010
 #define PTFF_SAVE_R9 0x00000020
 #define PTFF_SAVE_SP 0x00000100
 #define PTFF_SAVE_R0 0x00000200

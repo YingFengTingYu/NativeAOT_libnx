@@ -51,6 +51,8 @@ EXTERN_C CODE_LOCATION RhpRethrow2;
 // against immediates than to fetch the global. This macro hides the difference.
 #ifdef DACCESS_COMPILE
 #define EQUALS_RETURN_ADDRESS(x, func_name) ((x) == g_ ## func_name ## Addr)
+#elif defined(TARGET_ARM)
+#define EQUALS_RETURN_ADDRESS(x, func_name) ((uintptr_t)(x) == ((uintptr_t)&func_name & ~(uintptr_t)1))
 #else
 #define EQUALS_RETURN_ADDRESS(x, func_name) ((x) == &func_name)
 #endif
