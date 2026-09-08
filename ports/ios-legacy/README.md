@@ -1,6 +1,6 @@
 # NativeAOT：旧版 iOS ARM64 适配
 
-本目录从现有 `ios-arm64` NativeAOT 向下适配 iOS 7，不依赖 macios 托管绑定。当前已构建运行时、`System.Native` 和 C# 命令行探针；在 Apple Silicon Mac 上运行同一套 pthread TLS 实现完成了功能测试。**尚未在真实 iOS 7 设备上验证，不能据此宣称完整支持 iOS 7。**
+本目录从现有 `ios-arm64` NativeAOT 向下适配 iOS 7，不依赖 macios 托管绑定。当前已构建运行时、`System.Native` 和 C# 命令行探针；同一套 pthread TLS 实现在 Apple Silicon Mac 和 iOS 10.0.2 的 iPad mini 4 上均通过全部 7 组功能测试。**尚未在真实 iOS 7 设备上验证，不能据此宣称完整支持 iOS 7。**
 
 ## 固定基线与分支
 
@@ -112,9 +112,26 @@ codesign --force --sign - --digest-algorithm=sha1,sha256 artifacts/legacy-ios/pr
 codesign --verify --strict artifacts/legacy-ios/probes/ios/publish/LegacyIOSProbe
 ```
 
-本轮已执行并通过本机签名检查。新版工具会提示 SHA-1 即将弃用；这里保留双摘要用于旧系统兼容实验，实际能否加载仍由设备验证。
+本轮已执行并通过本机签名检查，上述双摘要产物也已在 Meridian 越狱的 iOS 10.0.2 真机上运行通过。新版工具会提示 SHA-1 即将弃用；这里保留双摘要用于旧系统兼容实验。
 
 已越狱设备可以使用 SSH 传入和启动，不依赖新版 Xcode 的 Developer Disk Image。需要设备处于已激活的越狱状态并运行 SSH 服务。USB 已配对与 SSH 可用是两个独立条件；设备重启后应先确认越狱与 SSH 的状态。
+
+这台 Meridian 设备从应用数据目录或 `/var/tmp` 启动新程序时，内核记录 `System Policy: deny process-exec`，Shell 返回 `Operation not permitted`（126）。普通 C 程序和系统 `ls` 的副本也出现相同行为；将同一产物复制到 `/usr/local/libexec` 下的测试目录后可以运行。因此，出现这一错误时应先检查执行位置与系统日志，不能直接判断为 NativeAOT 不兼容。
+
+本轮通过 USB House Arrest 传入 Meridian 的数据容器，再由 Filza 的 root Shell 执行。进入设备上放有 `LegacyIOSProbe` 的目录后，使用以下方式启动；这些命令在 iPad 上执行，不是在 Mac 上执行：
+
+```sh
+probe_install_dir=/usr/local/libexec/NativeAOTProbe-fbbefea22
+mkdir -p "$probe_install_dir"
+cp ./LegacyIOSProbe "$probe_install_dir/LegacyIOSProbe"
+chmod 755 "$probe_install_dir/LegacyIOSProbe"
+"$probe_install_dir/LegacyIOSProbe" > run.log 2>&1
+probe_status=$?
+printf '%s\n' "$probe_status" > exit-code.txt
+cat run.log
+```
+
+实测结果为 `PASS ALL (7 suites)`，退出码 0；普通 C 探针测得该设备页大小为 16384 字节。上述目录限制是此设备上的实际观察，不代表所有越狱或所有旧版 iOS 都采用相同策略。具体环境与覆盖范围见 [验证记录](results/2026-09-08.md)。
 
 实机执行时保存完整输出和退出码。成功链接、静态检查通过、本机测试通过都不等同于实机通过。
 

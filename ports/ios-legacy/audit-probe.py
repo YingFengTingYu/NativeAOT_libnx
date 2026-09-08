@@ -36,7 +36,7 @@ def main():
         "binary": str(binary), "architecture": architecture,
         "minimum_and_sdk": versions, "native_tls_sections": tls_sections,
         "suspect_imports": suspect_imports, "suspect_libraries": suspect_libraries,
-        "device_tested": False,
+        "validation_scope": "static",
     }
     report["passed"] = architecture == "arm64" and versions == [("7.0", "9.3")] and not (
         tls_sections or suspect_imports or suspect_libraries)
