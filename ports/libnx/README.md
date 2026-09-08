@@ -36,6 +36,8 @@ VMR 的 [source-manifest.json](https://github.com/dotnet/dotnet/blob/e2f47b0110e
 
 ## 本地构建原则
 
+IPv4 Socket、DNS、poll 异步队列、取消、HTTP 和明文 WebSocket 的公开 libnx 接入及模拟器验证见[第二十七轮](results/2026-09-08-round27-network.md)。IPv6、stock Linux BCL 网卡枚举、模拟器组播和辅助数据并未因此可用；宿主需在退出前调用网络事件静默接口。
+
 文件路径新增保留挂载点 `/romfs` → `romfs:/`，由宿主使用公开 libnx `romfsInit()` 挂载。其余 Unix 绝对路径仍映射到 SD，存档位置保持原约定。原生接口、托管游戏验证与限制见 [第二十六轮](results/2026-09-08-round26-romfs.md)。
 
 所有生成文件放在已被上游忽略的 `artifacts` 目录。保留原始 LICENSE 和第三方声明。每个可验证步骤分别提交，不提交 SDK、NuGet 包、模拟器或编译产物。

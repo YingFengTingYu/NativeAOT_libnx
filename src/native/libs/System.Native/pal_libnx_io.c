@@ -11,6 +11,7 @@
 #include "pal_io.h"
 #include "pal_process.h"
 #include "pal_uid.h"
+#include "pal_libnx_networking.h"
 
 c_static_assert(sizeof(off_t) == sizeof(int64_t));
 c_static_assert(S_IFREG == PAL_S_IFREG && S_IFDIR == PAL_S_IFDIR && S_IFMT == PAL_S_IFMT);
@@ -156,7 +157,7 @@ int32_t SystemNative_Close(intptr_t fd)
 {
     if (!ValidDescriptor(fd)) return -1;
     mutexLock(&s_positionLock);
-    int result = close((int)fd);
+    int result = LibnxCloseDescriptor((int)fd);
     mutexUnlock(&s_positionLock);
     return result;
 }

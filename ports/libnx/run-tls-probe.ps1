@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$EdenPath,
-    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System', 'Crypto')]
+    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System', 'Crypto', 'Network', 'NetworkManaged')]
     [string]$Suite = 'Tls'
 )
 
@@ -59,11 +59,11 @@ flush_line=true
 
 $allPassed = $true
 $modes = if ($Suite -eq 'Tls') { @('libnx', 'linux_control') } else { @($Suite.ToLowerInvariant()) }
-$probeDirectory = $Suite.ToLowerInvariant() + '-probe'
-$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } 'Crypto' { 'AOTCRYPTO' } }
+$probeDirectory = if ($Suite -eq 'NetworkManaged') { 'network-managed' } else { $Suite.ToLowerInvariant() + '-probe' }
+$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } 'Crypto' { 'AOTCRYPTO' } 'Network' { 'AOTNET' } 'NetworkManaged' { 'AOTMANET' } }
 foreach ($mode in $modes)
 {
-    $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } else { "nativeaot-$mode.nro" }
+    $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } elseif ($Suite -eq 'NetworkManaged') { 'managed-probe.nro' } else { "nativeaot-$mode.nro" }
     $nro = Join-Path $outputRoot "$probeDirectory/$nroName"
     $nro = (Resolve-Path -LiteralPath $nro).Path
     $emulatorLog = Join-Path $profileRoot 'log/eden_log.txt'
@@ -88,7 +88,17 @@ foreach ($mode in $modes)
     }
     $observed = @([regex]::Matches($logText, ('\[' + $prefix + '\] ([^\r\n]+)')) |
         ForEach-Object { $_.Groups[1].Value })
-    $required = if ($Suite -eq 'Crypto')
+    $required = if ($Suite -eq 'NetworkManaged')
+    {
+        @('socket.init=0', 'dns=1', 'tcp.async_rearm=64', 'receive.cancel=1', 'receive.after_cancel=1',
+          'receive.dispose=1', 'udp.async=16', 'udp.packet_info_fallback=1', 'http.get=1', 'websocket.roundtrip_close=1',
+          'interfaces.native=1', 'connect.refused=1', 'native.quiesce=1', 'pass=1')
+    }
+    elseif ($Suite -eq 'Network')
+    {
+        @('begin=1', 'dns.error=0', 'tcp.roundtrip=1', 'async.rearm_cleanup=1', 'udp.roundtrip=1', 'pass=1')
+    }
+    elseif ($Suite -eq 'Crypto')
     {
         @('begin=1', 'errors.report_and_clear=1', 'errors.thread_local=1', 'capabilities.unsupported=1', 'pass=1')
     }
@@ -128,7 +138,7 @@ foreach ($mode in $modes)
         Case = $mode
         TestPassed = $passed
         ExpectedFailure = $mode -eq 'linux_control'
-        ManagedRuntimeVerified = $false
+        ManagedRuntimeVerified = $passed -and $Suite -eq 'NetworkManaged'
         HardwareVerified = $false
         ExitCode = $process.ExitCode
         TimedOut = -not $finished
@@ -136,6 +146,13 @@ foreach ($mode in $modes)
         NroSha256 = (Get-FileHash -LiteralPath $nro -Algorithm SHA256).Hash
         Markers = $observed
         MissingMarkers = $missing
+    }
+    if ($Suite -eq 'NetworkManaged')
+    {
+        $result.Scope = 'IPv4 DNS/TCP/UDP unicast/HTTP/ws/async cancellation and cleanup'
+        $result.MulticastVerified = 'udp.multicast=1' -in $observed
+        $result.PacketInformationVerified = 'udp.packet_info=1' -in $observed
+        $result.BclNetworkInterfacesVerified = 'bcl_interfaces.available=1' -in $observed
     }
     $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $outputRoot "$probeDirectory/$mode-result.json") -Encoding utf8NoBOM
     $archiveRoot = Join-Path $outputRoot ("$probeDirectory/history/" + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff'))

@@ -43,7 +43,12 @@
 #if HAVE_SYS_SOCKIO_H
 #include <sys/sockio.h>
 #endif
+#if !defined(TARGET_LIBNX)
 #include <sys/un.h>
+#else
+// libnx has no Unix-domain socket ABI. Keep its reported size zero.
+struct sockaddr_un { };
+#endif
 #if defined(__APPLE__) && __APPLE__
 #include <sys/socketvar.h>
 #endif
@@ -52,6 +57,17 @@
 #include <stdio.h>
 #endif
 #include <unistd.h>
+#if defined(TARGET_LIBNX)
+#include "pal_libnx_networking.h"
+#define recv LibnxSocketReceive
+#define recvmsg LibnxSocketReceiveMessage
+#define send LibnxSocketSend
+#define sendmsg LibnxSocketSendMessage
+#define accept LibnxSocketAccept
+#define connect LibnxSocketConnect
+#define getsockname LibnxSocketGetName
+#define getpeername LibnxSocketGetPeerName
+#endif
 #ifdef HAVE_PWD_H
 #include <pwd.h>
 #endif
@@ -745,6 +761,10 @@ int32_t SystemNative_SetAddressFamily(uint8_t* socketAddress, int32_t socketAddr
     {
         return Error_EAFNOSUPPORT;
     }
+#if defined(TARGET_LIBNX)
+    sockAddr->sa_len = addressFamily == AddressFamily_AF_INET ? sizeof(struct sockaddr_in) :
+        addressFamily == AddressFamily_AF_INET6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr);
+#endif
 
     return Error_SUCCESS;
 }
@@ -972,7 +992,12 @@ int32_t SystemNative_GetControlMessageBufferSize(int32_t isIPv4, int32_t isIPv6)
     //       AF_INET nor AF_INET6. In this case both inputs will be 0 and
     //       the control message buffer size should be zero.
 #if defined(CMSG_SPACE)
+#if defined(TARGET_LIBNX)
+    (void)isIPv6;
+    return isIPv4 != 0 ? CMSG_SPACE(sizeof(struct in_pktinfo)) : 0;
+#else
     return (isIPv4 != 0 ? CMSG_SPACE(sizeof(struct in_pktinfo)) : 0) + (isIPv6 != 0 ? CMSG_SPACE(sizeof(struct in6_pktinfo)) : 0);
+#endif
 #else // CMSG_SPACE
     (void)isIPv4;
     (void)isIPv6;
@@ -1022,6 +1047,7 @@ static int32_t GetIPv4PacketInformation(struct cmsghdr* controlMessage, IPPacket
     return 1;
 }
 
+#if !defined(TARGET_LIBNX)
 static int32_t GetIPv6PacketInformation(struct cmsghdr* controlMessage, IPPacketInformation* packetInfo)
 {
     assert(controlMessage != NULL);
@@ -1041,6 +1067,7 @@ static int32_t GetIPv6PacketInformation(struct cmsghdr* controlMessage, IPPacket
     return 1;
 }
 
+#endif
 static struct cmsghdr* GET_CMSG_NXTHDR(struct msghdr* mhdr, struct cmsghdr* cmsg)
 {
 #ifndef __GLIBC__
@@ -1085,6 +1112,7 @@ SystemNative_TryGetIPPacketInformation(MessageHeader* messageHeader, int32_t isI
     }
     else
     {
+#if !defined(TARGET_LIBNX)
         for (; controlMessage != NULL && controlMessage->cmsg_len > 0;
              controlMessage = GET_CMSG_NXTHDR(&header, controlMessage))
         {
@@ -1093,6 +1121,7 @@ SystemNative_TryGetIPPacketInformation(MessageHeader* messageHeader, int32_t isI
                 return GetIPv6PacketInformation(controlMessage, packetInfo);
             }
         }
+#endif
     }
 
     return 0;
@@ -1234,6 +1263,9 @@ int32_t SystemNative_SetIPv4MulticastOption(intptr_t socket, int32_t multicastOp
 
 int32_t SystemNative_GetIPv6MulticastOption(intptr_t socket, int32_t multicastOption, IPv6MulticastOption* option)
 {
+#if defined(TARGET_LIBNX)
+    return Error_EAFNOSUPPORT;
+#else
     if (option == NULL)
     {
         return Error_EFAULT;
@@ -1258,10 +1290,14 @@ int32_t SystemNative_GetIPv6MulticastOption(intptr_t socket, int32_t multicastOp
     ConvertIn6AddrToByteArray(&option->Address.Address[0], NUM_BYTES_IN_IPV6_ADDRESS, &opt.ipv6mr_multiaddr);
     option->InterfaceIndex = (int32_t)opt.ipv6mr_interface;
     return Error_SUCCESS;
+#endif
 }
 
 int32_t SystemNative_SetIPv6MulticastOption(intptr_t socket, int32_t multicastOption, IPv6MulticastOption* option)
 {
+#if defined(TARGET_LIBNX)
+    return Error_EAFNOSUPPORT;
+#else
     if (option == NULL)
     {
         return Error_EFAULT;
@@ -1289,6 +1325,7 @@ int32_t SystemNative_SetIPv6MulticastOption(intptr_t socket, int32_t multicastOp
 
     int err = setsockopt(fd, IPPROTO_IPV6, optionName, &opt, sizeof(opt));
     return err == 0 ? Error_SUCCESS : SystemNative_ConvertErrorPlatformToPal(errno);
+#endif
 }
 
 #if defined(__APPLE__) && __APPLE__
@@ -1721,7 +1758,7 @@ int32_t SystemNative_Accept(intptr_t socket, uint8_t* socketAddress, int32_t* so
 #endif // !TARGET_WASI
 #else
     while ((accepted = accept(fd, (struct sockaddr*)socketAddress, &addrLen)) < 0 && errno == EINTR);
-#if defined(FD_CLOEXEC)
+#if defined(FD_CLOEXEC) && !defined(TARGET_LIBNX)
     // macOS does not have accept4 but it can set _CLOEXEC on descriptor.
     // Unlike accept4 it is not atomic and the fd can leak child process.
     if ((accepted != -1) && fcntl(accepted, F_SETFD, FD_CLOEXEC) != 0)
@@ -1919,7 +1956,11 @@ int32_t SystemNative_GetSocketErrorOption(intptr_t socket, int32_t* error)
     }
 
     assert(optLen == sizeof(socketErrno));
+#if defined(TARGET_LIBNX)
+    *error = LibnxConvertPendingSocketError(socketErrno);
+#else
     *error = SystemNative_ConvertErrorPlatformToPal(socketErrno);
+#endif
     return Error_SUCCESS;
 }
 
@@ -2108,6 +2149,9 @@ static bool TryGetPlatformSocketOption(int32_t socketOptionLevel, int32_t socket
             }
 
         case SocketOptionLevel_SOL_IPV6:
+#if defined(TARGET_LIBNX)
+            return false;
+#else
             *optLevel = IPPROTO_IPV6;
 
             switch (socketOptionName)
@@ -2145,6 +2189,7 @@ static bool TryGetPlatformSocketOption(int32_t socketOptionLevel, int32_t socket
                     return false;
             }
 
+#endif
         case SocketOptionLevel_SOL_TCP:
             *optLevel = IPPROTO_TCP;
 
@@ -2815,6 +2860,15 @@ int32_t SystemNative_Socket(int32_t addressFamily, int32_t socketType, int32_t p
     {
         return Error_EFAULT;
     }
+#if defined(TARGET_LIBNX)
+    // This PAL currently implements IPv4. Report the capability explicitly;
+    // generic BSD service errors must not make the BCL assume dual-mode IPv6.
+    if (addressFamily != AddressFamily_AF_INET)
+    {
+        *createdSocket = -1;
+        return Error_EAFNOSUPPORT;
+    }
+#endif
 
     sa_family_t platformAddressFamily;
     int platformSocketType, platformProtocolType;
@@ -2837,7 +2891,7 @@ int32_t SystemNative_Socket(int32_t addressFamily, int32_t socketType, int32_t p
         return Error_EPROTONOSUPPORT;
     }
 
-#ifdef SOCK_CLOEXEC
+#if defined(SOCK_CLOEXEC) && !defined(TARGET_LIBNX)
     platformSocketType |= SOCK_CLOEXEC;
 #endif
 #if defined(TARGET_WASI)
@@ -3394,6 +3448,14 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     return Error_SUCCESS;
 }
 
+#elif defined(TARGET_LIBNX)
+
+static const size_t SocketEventBufferElementSize = sizeof(SocketEvent);
+#define CreateSocketEventPortInner LibnxCreateSocketEventPort
+#define CloseSocketEventPortInner LibnxCloseSocketEventPort
+#define TryChangeSocketEventRegistrationInner LibnxChangeSocketEvents
+#define WaitForSocketEventsInner LibnxWaitForSocketEvents
+
 #else // !HAVE_KQUEUE !HAVE_EPOLL
 
 static const size_t SocketEventBufferElementSize = 0;
@@ -3733,6 +3795,11 @@ uint32_t SystemNative_InterfaceNameToIndex(char* interfaceName)
     return if_nametoindex(interfaceName);
 #else // HAVE_NET_IF_H
     (void)interfaceName;
+#if defined(TARGET_LIBNX)
+    errno = ENOTSUP;
+    return 0;
+#else
     return Error_ENOTSUP;
+#endif
 #endif // HAVE_NET_IF_H
 }

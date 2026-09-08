@@ -62,8 +62,5 @@ void SystemNative_UninitializeConsoleAfterRead(void) {}
 int32_t SystemNative_ReadStdin(void* buffer, int32_t count) { return SystemNative_Read(0, buffer, count); }
 int32_t SystemNative_Poll(PollEvent* events, uint32_t count, int32_t milliseconds, uint32_t* triggered)
 {
-    (void)events; (void)count; (void)milliseconds;
-    if (triggered)
-        *triggered = 0;
-    return Error_ENOTSUP;
+    return Common_Poll(events, count, milliseconds, triggered);
 }
