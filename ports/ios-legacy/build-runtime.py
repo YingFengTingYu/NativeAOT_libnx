@@ -2,7 +2,7 @@
 # Licensed to the .NET Foundation under one or more agreements.
 # The .NET Foundation licenses this file to you under the MIT license.
 
-"""构建 iOS 7 ARM64 NativeAOT，或用于本机验证的同一 pthread TLS 实现。"""
+"""构建 iOS 7 ARMv7/ARM64 NativeAOT，或用于本机验证的 pthread TLS 实现。"""
 
 import argparse
 import json
@@ -15,11 +15,14 @@ import subprocess
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=["ios", "osx"], default="ios")
+    parser.add_argument("--arch", choices=["arm64", "arm"], default="arm64")
     parser.add_argument("--sdk", default=str(Path.home() / "SDKs/iPhoneOS9.3.sdk"))
     parser.add_argument("--jobs", type=int, default=6)
     args = parser.parse_args()
     if args.jobs < 1:
         raise SystemExit("--jobs 必须大于零。")
+    if args.arch == "arm" and args.platform != "ios":
+        raise SystemExit("ARM32 适配只面向 iOS。")
     repo = Path(__file__).resolve().parents[2]
     variant = "legacy-ios" if args.platform == "ios" else "legacy-ios-host"
     cmake_args = ["-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"]
@@ -47,7 +50,7 @@ def main():
             if icu.returncode == 0:
                 cmake_args.append("-DCLR_CMAKE_ICU_DIR=" + icu.stdout.strip())
     command = [
-        "bash", "src/coreclr/build-runtime.sh", "-os", args.platform, "-arch", "arm64",
+        "bash", "src/coreclr/build-runtime.sh", "-os", args.platform, "-arch", args.arch,
         "-release", "-component", "nativeaot", "-subdir", variant,
         "-numproc", str(args.jobs), "-cmakeargs", " ".join(cmake_args),
     ]
@@ -55,7 +58,7 @@ def main():
         command.append("-cross")
     subprocess.run(command, cwd=repo, check=True)
     if args.platform == "ios":
-        build = repo / "artifacts/obj/coreclr/ios.arm64.Release/legacy-ios"
+        build = repo / f"artifacts/obj/coreclr/ios.{args.arch}.Release/legacy-ios"
         subprocess.run(["cmake", "--build", str(build), "--target", "System.Native-Static",
                         "-j", str(args.jobs)], check=True)
 

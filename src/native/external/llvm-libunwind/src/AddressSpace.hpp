@@ -498,8 +498,10 @@ inline bool LocalAddressSpace::findUnwindSections(pint_t targetAddr,
     info.dwarf_section                 = (uintptr_t)dyldInfo.dwarf_section;
     info.dwarf_section_length          = (size_t)dyldInfo.dwarf_section_length;
  #endif
+ #if defined(_LIBUNWIND_SUPPORT_COMPACT_UNWIND)
     info.compact_unwind_section        = (uintptr_t)dyldInfo.compact_unwind_section;
     info.compact_unwind_section_length = (size_t)dyldInfo.compact_unwind_section_length;
+ #endif
     return true;
   }
 
@@ -511,10 +513,12 @@ inline bool LocalAddressSpace::findUnwindSections(pint_t targetAddr,
     info.dwarf_section = (uintptr_t)dynamicUnwindSectionInfo.dwarf_section;
     info.dwarf_section_length = dynamicUnwindSectionInfo.dwarf_section_length;
 #endif
+ #if defined(_LIBUNWIND_SUPPORT_COMPACT_UNWIND)
     info.compact_unwind_section =
         (uintptr_t)dynamicUnwindSectionInfo.compact_unwind_section;
     info.compact_unwind_section_length =
         dynamicUnwindSectionInfo.compact_unwind_section_length;
+ #endif
     return true;
   }
 

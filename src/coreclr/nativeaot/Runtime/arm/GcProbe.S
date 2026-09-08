@@ -86,7 +86,7 @@ NESTED_ENTRY RhpWaitForGC, _TEXT, NoHandler
     PUSH_PROBE_FRAME r2, r3, r12
 
     ldr         r0, [r2, #OFFSETOF__Thread__m_pDeferredTransitionFrame]
-    bl          RhpWaitForGC2
+    bl          C_FUNC(RhpWaitForGC2)
 
     ldr         r2, [sp, #OFFSETOF__PInvokeTransitionFrame__m_Flags]
     tst         r2, #PTFF_THREAD_ABORT
@@ -105,13 +105,19 @@ NESTED_END RhpWaitForGC
 LEAF_ENTRY RhpGcPoll
     PREPARE_EXTERNAL_VAR_INDIRECT RhpTrapThreads, r0
     cmp         r0, #TrapThreadsFlags_None
-    bne         RhpGcPollRare
+#ifdef __APPLE__
+    beq         LOCAL_LABEL(GcPollReturn)
+    b.w         C_FUNC(RhpGcPollRare)
+LOCAL_LABEL(GcPollReturn):
+#else
+    bne         C_FUNC(RhpGcPollRare)
+#endif
     bx          lr
 LEAF_END RhpGcPoll
 
 NESTED_ENTRY RhpGcPollRare, _TEXT, NoHandler
     PUSH_COOP_PINVOKE_FRAME r0
-    bl RhpGcPoll2
+    bl C_FUNC(RhpGcPoll2)
     POP_COOP_PINVOKE_FRAME
     bx           lr
 NESTED_END RhpGcPollRare
@@ -126,7 +132,7 @@ NESTED_ENTRY RhpGcProbeHijack, _TEXT, NoHandler
 LOCAL_LABEL(WaitForGC):
     mov         r12, #(DEFAULT_FRAME_SAVE_FLAGS + PTFF_SAVE_R0)
     orr         r12, r12, #PTFF_THREAD_HIJACK
-    b           RhpWaitForGC
+    b           C_FUNC(RhpWaitForGC)
 NESTED_END RhpGcProbeHijack
 
 #ifdef FEATURE_GC_STRESS

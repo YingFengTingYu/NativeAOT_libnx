@@ -140,6 +140,8 @@ build_native()
         cmakeArgs="-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_DEPLOYMENT_TARGET=12.2 $cmakeArgs"
         if [[ "$__TargetArch" == arm64 ]]; then
             cmakeArgs="-DCMAKE_OSX_ARCHITECTURES=\"arm64\" $cmakeArgs"
+        elif [[ "$__TargetArch" == arm ]]; then
+            cmakeArgs="-DCMAKE_OSX_ARCHITECTURES=\"armv7\" $cmakeArgs"
         else
             echo "Error: Unknown iOS architecture $__TargetArch."
             exit 1

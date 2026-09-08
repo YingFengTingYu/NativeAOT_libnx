@@ -25,7 +25,9 @@
   #if defined(FOR_DYLD)
     #define _LIBUNWIND_SUPPORT_COMPACT_UNWIND 1
   #else
-    #define _LIBUNWIND_SUPPORT_COMPACT_UNWIND 1
+    #if !defined(__arm__)
+      #define _LIBUNWIND_SUPPORT_COMPACT_UNWIND 1
+    #endif
     #define _LIBUNWIND_SUPPORT_DWARF_UNWIND 1
   #endif
 #elif defined(_WIN32)
@@ -110,12 +112,12 @@
 
 // Apple/armv7k defaults to DWARF/Compact unwinding, but its libunwind also
 // needs to include the SJLJ APIs.
-#if (defined(__APPLE__) && defined(__arm__)) || defined(__USING_SJLJ_EXCEPTIONS__)
+#if (defined(__APPLE__) && defined(__arm__) && !defined(__ARM_DWARF_EH__)) || defined(__USING_SJLJ_EXCEPTIONS__)
 #define _LIBUNWIND_BUILD_SJLJ_APIS
 #endif
 
 #if defined(__i386__) || defined(__x86_64__) || defined(__powerpc__) ||        \
-    (!defined(__APPLE__) && defined(__arm__)) || defined(__aarch64__) ||       \
+    (defined(__arm__) && (!defined(__APPLE__) || defined(__ARM_DWARF_EH__))) || defined(__aarch64__) || \
     defined(__mips__) || defined(__riscv) || defined(__hexagon__) ||           \
     defined(__sparc__) || defined(__s390x__) || defined(__loongarch__)
 #if !defined(_LIBUNWIND_BUILD_SJLJ_APIS)

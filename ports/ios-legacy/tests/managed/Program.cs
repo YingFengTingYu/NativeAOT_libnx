@@ -30,6 +30,24 @@ internal static class Program
     private delegate double MixedCallback(long value, double a, double b, double c, double d,
         double e, double f, double g, double h);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate double OddDoubleCallback(int a, double b, int c);
+
+    [DllImport("__Internal", EntryPoint = "LegacyIOS_OddDouble", CallingConvention = CallingConvention.Cdecl)]
+    private static extern double OddDouble(int a, double b, int c);
+
+    [DllImport("__Internal", EntryPoint = "LegacyIOS_SplitDouble", CallingConvention = CallingConvention.Cdecl)]
+    private static extern double SplitDouble(int a, int b, int c, double d);
+
+    [DllImport("__Internal", EntryPoint = "LegacyIOS_OddInt64", CallingConvention = CallingConvention.Cdecl)]
+    private static extern long OddInt64(int a, long b, int c);
+
+    [DllImport("__Internal", EntryPoint = "LegacyIOS_SplitInt64", CallingConvention = CallingConvention.Cdecl)]
+    private static extern long SplitInt64(int a, int b, int c, long d);
+
+    [DllImport("__Internal", EntryPoint = "LegacyIOS_InvokeOddDouble", CallingConvention = CallingConvention.Cdecl)]
+    private static extern double InvokeOddDouble(IntPtr callback);
+
     [DllImport("__Internal", EntryPoint = "LegacyIOS_InvokeCallback", CallingConvention = CallingConvention.Cdecl)]
     private static extern double InvokeCallback(IntPtr callback, int foreignThread);
 
@@ -188,6 +206,20 @@ internal static class Program
 
     private static void CheckCallbacks()
     {
+        const long marker = 0x1234567890ABCDE;
+        Check(OddDouble(1, 2.5, 7) == 132, "P/Invoke double after an odd register slot failed");
+        Check(SplitDouble(11, 22, 33, 2.5) == 68.5, "P/Invoke split double failed");
+        Check(OddInt64(11, marker, 22) == marker + 33, "P/Invoke int64 after an odd register slot failed");
+        Check(SplitInt64(11, 22, 33, marker) == marker + 66, "P/Invoke split int64 failed");
+        OddDoubleCallback oddCallback = (a, b, c) =>
+        {
+            GC.Collect();
+            return a * 100 + b * 10 + c;
+        };
+        Check(InvokeOddDouble(Marshal.GetFunctionPointerForDelegate(oddCallback)) == 132,
+            "Reverse P/Invoke odd double arguments failed");
+        GC.KeepAlive(oddCallback);
+
         SetNativeError(77);
         Check(Marshal.GetLastPInvokeError() == 77, "Native error capture failed");
         Holder receiver = new Holder { Value = 37 };

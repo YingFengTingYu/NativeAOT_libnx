@@ -77,9 +77,12 @@ ABIPassingInformation Arm32Classifier::Classify(Compiler*    comp,
     }
 
     unsigned alignment = 4;
-    if ((type == TYP_LONG) || (type == TYP_DOUBLE) ||
+    // Darwin ARM uses four-byte argument alignment, including 64-bit values.
+    // Apply the same convention to managed calls and runtime helpers so their
+    // signatures agree with the native Apple ARM ABI.
+    if (!TargetOS::IsApplePlatform && ((type == TYP_LONG) || (type == TYP_DOUBLE) ||
         ((type == TYP_STRUCT) &&
-         (comp->info.compCompHnd->getClassAlignmentRequirement(structLayout->GetClassHandle()) == 8)))
+         (comp->info.compCompHnd->getClassAlignmentRequirement(structLayout->GetClassHandle()) == 8))))
     {
         alignment    = 8;
         m_nextIntReg = roundUp(m_nextIntReg, 2);

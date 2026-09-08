@@ -422,6 +422,12 @@ if (CLR_CMAKE_HOST_UNIX)
       message("Detected iOS x86_64")
     elseif(CLR_CMAKE_HOST_UNIX_ARM64)
       message("Detected iOS ARM64")
+    elseif(CLR_CMAKE_HOST_UNIX_ARM)
+      message("Detected iOS ARM")
+      set(ARM_SOFTFP 1)
+      # NativeAOT and its bundled libunwind use DWARF, not Darwin ARM's
+      # historical setjmp/longjmp exception convention.
+      add_compile_options(-fdwarf-exceptions)
     else()
       clr_unknown_arch()
     endif()

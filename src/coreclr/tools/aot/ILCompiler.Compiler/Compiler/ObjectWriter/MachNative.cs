@@ -8,6 +8,7 @@ namespace ILCompiler.ObjectWriter
     internal static class MachNative
     {
         public const uint MH_MAGIC_64 = 0xFEEDFACF;
+        public const uint MH_MAGIC = 0xFEEDFACE;
 
         // File type
         public const uint MH_OBJECT = 0x1;
@@ -17,6 +18,8 @@ namespace ILCompiler.ObjectWriter
 
         // CPU type/subtype
         public const uint CPU_TYPE_ARM64 = 0x1000000 | 12;
+        public const uint CPU_TYPE_ARM = 12;
+        public const uint CPU_SUBTYPE_ARM_V7 = 9;
         public const uint CPU_TYPE_X86_64 = 0x1000000 | 7;
         public const uint CPU_SUBTYPE_ARM64_ALL = 0;
         public const uint CPU_SUBTYPE_X86_64_ALL = 3;
@@ -25,6 +28,7 @@ namespace ILCompiler.ObjectWriter
         public const uint LC_SYMTAB = 0x2;
         public const uint LC_DYSYMTAB = 0xB;
         public const uint LC_SEGMENT_64 = 0x19;
+        public const uint LC_SEGMENT = 0x1;
         public const uint LC_BUILD_VERSION = 0x32;
 
         // Memory protection
@@ -67,6 +71,12 @@ namespace ILCompiler.ObjectWriter
         public const uint S_ATTR_PURE_INSTRUCTIONS = 0x80000000;
 
         // Relocation types
+        public const byte ARM_RELOC_VANILLA = 0;
+        public const byte ARM_RELOC_PAIR = 1;
+        public const byte ARM_RELOC_SECTDIFF = 2;
+        public const byte ARM_THUMB_RELOC_BR22 = 6;
+        public const byte ARM_RELOC_HALF = 8;
+        public const byte ARM_RELOC_HALF_SECTDIFF = 9;
         public const byte X86_64_RELOC_UNSIGNED = 0;
         public const byte X86_64_RELOC_SIGNED = 1;
         public const byte X86_64_RELOC_BRANCH = 2;
@@ -107,6 +117,7 @@ namespace ILCompiler.ObjectWriter
         public const ushort REFERENCE_FLAG_PRIVATE_UNDEFINED_LAZY = 5;
         public const ushort REFERENCED_DYNAMICALLY = 0x10;
         public const ushort N_NO_DEAD_STRIP = 0x20;
+        public const ushort N_ARM_THUMB_DEF = 0x8;
         public const ushort N_WEAK_REF = 0x40;
         public const ushort N_WEAK_DEF = 0x80;
 

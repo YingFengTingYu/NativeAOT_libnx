@@ -478,6 +478,10 @@ void GCToOSInterface::FlushProcessWriteBuffers()
                 arm_thread_state64_t threadState;
                 mach_msg_type_number_t count = ARM_THREAD_STATE64_COUNT;
                 machret = thread_get_state(pThreads[i], ARM_THREAD_STATE64, (thread_state_t)&threadState, &count);
+#elif defined(HOST_ARM)
+                arm_thread_state_t threadState;
+                mach_msg_type_number_t count = ARM_THREAD_STATE_COUNT;
+                machret = thread_get_state(pThreads[i], ARM_THREAD_STATE, (thread_state_t)&threadState, &count);
 #else
                 #error Unexpected architecture
 #endif

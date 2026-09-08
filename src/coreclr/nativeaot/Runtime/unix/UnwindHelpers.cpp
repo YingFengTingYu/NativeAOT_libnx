@@ -1406,7 +1406,11 @@ bool _dyld_find_unwind_sections(void* addr, dyld_unwind_sections* info)
     if (!dladdr(addr, &dlinfo))
       return false;
 
+#ifdef __LP64__
     const struct mach_header_64 *mh = (const struct mach_header_64 *)dlinfo.dli_fbase;
+#else
+    const struct mach_header *mh = (const struct mach_header *)dlinfo.dli_fbase;
+#endif
 
     // Initialize the return struct
     info->mh = (const struct mach_header *)mh;

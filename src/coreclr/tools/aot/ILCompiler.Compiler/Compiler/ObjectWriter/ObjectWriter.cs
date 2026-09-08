@@ -213,6 +213,7 @@ namespace ILCompiler.ObjectWriter
         }
 
         private protected virtual void EmitReferencedMethod(string symbolName) { }
+        private protected virtual void EmitReferencedData(string symbolName) { }
 
         /// <summary>
         /// Emit symbolic relocations into object file as format specific
@@ -481,6 +482,9 @@ namespace ILCompiler.ObjectWriter
                     ISymbolNode relocTarget = _nodeFactory.ObjectInterner.GetDeduplicatedSymbol(_nodeFactory, reloc.Target);
 
                     string relocSymbolName = GetMangledName(relocTarget);
+
+                    if (relocTarget is ExternDataSymbolNode)
+                        EmitReferencedData(relocSymbolName);
 
                     EmitOrResolveRelocation(
                         blockToRelocate.SectionIndex,

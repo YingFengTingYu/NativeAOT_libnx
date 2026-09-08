@@ -505,3 +505,60 @@ GLOBAL_LABEL RhpCallFilterFunclet2
         EPILOG_POP  "{r2,r4-r11,pc}"
 
 NESTED_END RhpCallFilterFunclet, _TEXT
+
+#ifdef FEATURE_OBJCMARSHAL
+// Restore the native caller's state before tail-calling its exception callback.
+// r0=context, r1=callback, r2=REGDISPLAY, r3=ExInfo, [sp]=previous transition.
+NESTED_ENTRY RhpCallPropagateExceptionCallback, _TEXT, NoHandler
+        PROLOG_PUSH "{r0-r4, lr}"
+        PROLOG_STACK_ALLOC 8
+        INLINE_GETTHREAD
+        str r0, [sp]
+LOCAL_LABEL(PropagateClearRetry):
+        ldrex r1, [r0, #OFFSETOF__Thread__m_ThreadStateFlags]
+        bic r1, r1, #TSF_DoNotTriggerGc
+        strex r2, r1, [r0, #OFFSETOF__Thread__m_ThreadStateFlags]
+        cmp r2, #0
+        bne LOCAL_LABEL(PropagateClearRetry)
+
+        ldr r2, [sp, #16]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__pR4]
+        ldr r4, [r12]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__pR5]
+        ldr r5, [r12]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__pR6]
+        ldr r6, [r12]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__pR7]
+        ldr r7, [r12]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__pR8]
+        ldr r8, [r12]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__pR9]
+        ldr r9, [r12]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__pR10]
+        ldr r10, [r12]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__pR11]
+        ldr r11, [r12]
+        add r12, r2, #OFFSETOF__REGDISPLAY__D
+        vldm r12, {d8-d15}
+
+        ldr r1, [sp]
+        INLINE_THREAD_UNHIJACK r1, r3, r12
+        ldr r3, [sp, #20]
+        ldr r12, [r2, #OFFSETOF__REGDISPLAY__SP]
+LOCAL_LABEL(PropagatePopExInfo):
+        ldr r3, [r3, #OFFSETOF__ExInfo__m_pPrevExInfo]
+        cbz r3, LOCAL_LABEL(PropagateExInfoPopped)
+        cmp r3, r12
+        blt LOCAL_LABEL(PropagatePopExInfo)
+LOCAL_LABEL(PropagateExInfoPopped):
+        str r3, [r1, #OFFSETOF__Thread__m_pExInfoStackHead]
+        ldr r3, [sp, #32]
+        str r3, [r1, #OFFSETOF__Thread__m_pTransitionFrame]
+        ldr r0, [sp, #8]
+        ldr r1, [sp, #12]
+        ldr r3, [r2, #OFFSETOF__REGDISPLAY__pLR]
+        ldr lr, [r3]
+        mov sp, r12
+        bx r1
+NESTED_END RhpCallPropagateExceptionCallback, _TEXT
+#endif

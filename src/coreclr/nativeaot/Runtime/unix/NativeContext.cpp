@@ -70,6 +70,26 @@
 #define MCREG_R14(mc)       ((mc)->__ss.__r14)
 #define MCREG_R15(mc)       ((mc)->__ss.__r15)
 
+#elif defined(HOST_ARM)
+
+#define MCREG_R0(mc)      ((mc)->__ss.__r[0])
+#define MCREG_R1(mc)      ((mc)->__ss.__r[1])
+#define MCREG_R2(mc)      ((mc)->__ss.__r[2])
+#define MCREG_R3(mc)      ((mc)->__ss.__r[3])
+#define MCREG_R4(mc)      ((mc)->__ss.__r[4])
+#define MCREG_R5(mc)      ((mc)->__ss.__r[5])
+#define MCREG_R6(mc)      ((mc)->__ss.__r[6])
+#define MCREG_R7(mc)      ((mc)->__ss.__r[7])
+#define MCREG_R8(mc)      ((mc)->__ss.__r[8])
+#define MCREG_R9(mc)      ((mc)->__ss.__r[9])
+#define MCREG_R10(mc)     ((mc)->__ss.__r[10])
+#define MCREG_R11(mc)     ((mc)->__ss.__r[11])
+#define MCREG_R12(mc)     ((mc)->__ss.__r[12])
+#define MCREG_Sp(mc)      ((mc)->__ss.__sp)
+#define MCREG_Lr(mc)      ((mc)->__ss.__lr)
+#define MCREG_Pc(mc)      ((mc)->__ss.__pc)
+#define MCREG_Cpsr(mc)    ((mc)->__ss.__cpsr)
+
 #else // HOST_ARM64
 
 #error "Unsupported arch"
@@ -796,22 +816,22 @@ uint64_t GetPC(void* context)
     uint64_t& NATIVE_CONTEXT::Rip(){ return (uint64_t&)MCREG_Rip(ctx.uc_mcontext); }
 
 #elif defined(TARGET_ARM)
-    uint64_t& NATIVE_CONTEXT::Pc(){ return (uint64_t&)MCREG_Pc(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::Sp(){ return (uint64_t&)MCREG_Sp(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::Lr(){ return (uint64_t&)MCREG_Lr(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R0(){ return (uint64_t&)MCREG_R0(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R1(){ return (uint64_t&)MCREG_R1(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R2(){ return (uint64_t&)MCREG_R2(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R3(){ return (uint64_t&)MCREG_R3(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R4(){ return (uint64_t&)MCREG_R4(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R5(){ return (uint64_t&)MCREG_R5(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R6(){ return (uint64_t&)MCREG_R6(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R7(){ return (uint64_t&)MCREG_R7(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R8(){ return (uint64_t&)MCREG_R8(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R9(){ return (uint64_t&)MCREG_R9(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R10(){ return (uint64_t&)MCREG_R10(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R11(){ return (uint64_t&)MCREG_R11(ctx.uc_mcontext); }
-    uint64_t& NATIVE_CONTEXT::R12(){ return (uint64_t&)MCREG_R12(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::Pc(){ return (uint32_t&)MCREG_Pc(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::Sp(){ return (uint32_t&)MCREG_Sp(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::Lr(){ return (uint32_t&)MCREG_Lr(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R0(){ return (uint32_t&)MCREG_R0(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R1(){ return (uint32_t&)MCREG_R1(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R2(){ return (uint32_t&)MCREG_R2(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R3(){ return (uint32_t&)MCREG_R3(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R4(){ return (uint32_t&)MCREG_R4(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R5(){ return (uint32_t&)MCREG_R5(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R6(){ return (uint32_t&)MCREG_R6(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R7(){ return (uint32_t&)MCREG_R7(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R8(){ return (uint32_t&)MCREG_R8(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R9(){ return (uint32_t&)MCREG_R9(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R10(){ return (uint32_t&)MCREG_R10(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R11(){ return (uint32_t&)MCREG_R11(ctx.uc_mcontext); }
+    uint32_t& NATIVE_CONTEXT::R12(){ return (uint32_t&)MCREG_R12(ctx.uc_mcontext); }
 
 #elif TARGET_LOONGARCH64
 
@@ -888,4 +908,3 @@ uint64_t GetPC(void* context)
 #else
     PORTABILITY_ASSERT("NATIVE_CONTEXT");
 #endif // TARGET_ARM
-

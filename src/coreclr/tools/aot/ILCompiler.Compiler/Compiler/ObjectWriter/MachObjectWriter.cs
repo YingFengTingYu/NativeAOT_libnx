@@ -62,6 +62,7 @@ namespace ILCompiler.ObjectWriter
         private readonly Version _minimumOSVersion;
         private readonly uint _cpuType;
         private readonly uint _cpuSubType;
+        private bool Is64Bit => _cpuType != CPU_TYPE_ARM;
         private readonly List<MachSection> _sections = new();
 
         // Exception handling sections
@@ -80,6 +81,10 @@ namespace ILCompiler.ObjectWriter
         {
             switch (factory.Target.Architecture)
             {
+                case TargetArchitecture.ARM:
+                    _cpuType = CPU_TYPE_ARM;
+                    _cpuSubType = CPU_SUBTYPE_ARM_V7;
+                    break;
                 case TargetArchitecture.ARM64:
                     _cpuType = CPU_TYPE_ARM64;
                     _cpuSubType = CPU_SUBTYPE_ARM64_ALL;
@@ -173,7 +178,8 @@ namespace ILCompiler.ObjectWriter
 
             // Segment + sections
             uint loadCommandsCount = 1;
-            uint loadCommandsSize = (uint)(MachSegment64Header.HeaderSize + _sections.Count * MachSection.HeaderSize);
+            uint loadCommandsSize = (uint)((Is64Bit ? MachSegment64Header.HeaderSize : 56) +
+                _sections.Count * (Is64Bit ? MachSection.HeaderSize : 68));
             // Symbol table
             loadCommandsCount += 2;
             loadCommandsSize += (uint)(MachSymbolTableCommandHeader.HeaderSize + MachDynamicLinkEditSymbolTable.HeaderSize);
@@ -183,7 +189,7 @@ namespace ILCompiler.ObjectWriter
 
             // We added the compact unwinding section, debug sections, and relocations,
             // so re-run the layout and this time calculate with the correct file offsets.
-            uint fileOffset = (uint)MachHeader64.HeaderSize + loadCommandsSize;
+            uint fileOffset = (uint)(Is64Bit ? MachHeader64.HeaderSize : 28) + loadCommandsSize;
             uint segmentFileOffset = fileOffset;
             LayoutSections(ref fileOffset, out uint segmentFileSize, out ulong segmentSize);
 
@@ -199,7 +205,7 @@ namespace ILCompiler.ObjectWriter
                 Flags = MH_SUBSECTIONS_VIA_SYMBOLS,
                 Reserved = 0,
             };
-            machHeader.Write(outputFileStream);
+            machHeader.Write(outputFileStream, Is64Bit);
 
             MachSegment64Header machSegment64Header = new MachSegment64Header
             {
@@ -212,11 +218,11 @@ namespace ILCompiler.ObjectWriter
                 FileSize = segmentFileSize,
                 NumberOfSections = (uint)_sections.Count,
             };
-            machSegment64Header.Write(outputFileStream);
+            machSegment64Header.Write(outputFileStream, Is64Bit);
 
             foreach (MachSection section in _sections)
             {
-                section.WriteHeader(outputFileStream);
+                section.WriteHeader(outputFileStream, Is64Bit);
             }
 
             MachStringTable stringTable = new();
@@ -226,7 +232,7 @@ namespace ILCompiler.ObjectWriter
             }
 
             uint symbolTableOffset = fileOffset;
-            uint stringTableOffset = symbolTableOffset + ((uint)_symbolTable.Count * 16u);
+            uint stringTableOffset = symbolTableOffset + ((uint)_symbolTable.Count * (Is64Bit ? 16u : 12u));
             MachSymbolTableCommandHeader symbolTableHeader = new MachSymbolTableCommandHeader
             {
                 SymbolTableOffset = symbolTableOffset,
@@ -295,6 +301,7 @@ namespace ILCompiler.ObjectWriter
             {
                 if (section.NumberOfRelocationEntries > 0)
                 {
+                    outputFileStream.Position = section.RelocationOffset;
                     foreach (MachRelocation relocation in section.Relocations)
                     {
                         relocation.Write(outputFileStream);
@@ -306,7 +313,7 @@ namespace ILCompiler.ObjectWriter
             outputFileStream.Position = symbolTableOffset;
             foreach (MachSymbol symbol in _symbolTable)
             {
-                symbol.Write(outputFileStream, stringTable);
+                symbol.Write(outputFileStream, stringTable, Is64Bit);
             }
             stringTable.Write(outputFileStream);
         }
@@ -388,6 +395,20 @@ namespace ILCompiler.ObjectWriter
             string symbolName,
             long addend)
         {
+            if (!Is64Bit)
+            {
+                if (_sections[sectionIndex].IsDwarfSection &&
+                    relocType == IMAGE_REL_BASED_HIGHLOW && symbolName.StartsWith('.'))
+                {
+                    BinaryPrimitives.WriteUInt32LittleEndian(data, checked((uint)addend));
+                    return;
+                }
+                // ARM scattered relocations need the final section addresses.
+                // Preserve the original instruction and addend until layout is complete.
+                base.EmitRelocation(sectionIndex, offset, data, relocType, symbolName, addend);
+                return;
+            }
+
             // Mach-O doesn't use relocations between DWARF sections, so embed the offsets directly
             if (relocType is IMAGE_REL_BASED_DIR64 or IMAGE_REL_BASED_HIGHLOW &&
                 _sections[sectionIndex].IsDwarfSection)
@@ -474,6 +495,59 @@ namespace ILCompiler.ObjectWriter
             IDictionary<string, SymbolDefinition> definedSymbols,
             SortedSet<string> undefinedSymbols)
         {
+            // ARM MOVW/MOVT PC-relative references cannot subtract an undefined
+            // Mach-O symbol. As on ELF ARM, use local tail-branch import thunks.
+            MachSection armThunks = null;
+            var armThunkSymbols = new Dictionary<string, MachSymbol>();
+            var armDataSymbols = new List<MachSymbol>();
+            if (!Is64Bit && undefinedSymbols.Count != 0)
+            {
+                // These runtime globals are defined strongly in startup.cpp and
+                // threadstore.cpp. Weak anchors let ARM scattered relocations
+                // bind by name to those strong definitions during the static link.
+                var runtimeData = undefinedSymbols.Where(name => name is "___security_cookie" or "_RhpTrapThreads").ToArray();
+                if (runtimeData.Length != 0)
+                {
+                    var dataStream = new MemoryStream(new byte[runtimeData.Length * 4], writable: true);
+                    var dataSection = new MachSection("__DATA", "__aot_imports", dataStream) { Log2Alignment = 2 };
+                    _sections.Add(dataSection);
+                    uint dataLayoutOffset = 0;
+                    LayoutSections(ref dataLayoutOffset, out _, out _);
+                    for (int i = 0; i < runtimeData.Length; i++)
+                    {
+                        armDataSymbols.Add(new MachSymbol
+                        {
+                            Name = runtimeData[i], Section = dataSection, Value = dataSection.VirtualAddress + (uint)i * 4,
+                            Descriptor = N_NO_DEAD_STRIP | N_WEAK_DEF, Type = N_SECT | N_EXT,
+                        });
+                    }
+                }
+                var functionImports = undefinedSymbols.Except(runtimeData).ToArray();
+                var thunkStream = new MemoryStream(functionImports.Length * 4);
+                thunkStream.SetLength(functionImports.Length * 4);
+                armThunks = new MachSection("__TEXT", "__aot_thunks", thunkStream)
+                {
+                    Log2Alignment = 2,
+                    Flags = S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS,
+                };
+                _sections.Add(armThunks);
+                uint layoutOffset = 0;
+                LayoutSections(ref layoutOffset, out _, out _);
+                uint thunkOffset = 0;
+                foreach (string name in functionImports)
+                {
+                    armThunkSymbols.Add(name, new MachSymbol
+                    {
+                        Name = name + "$armThunk", Section = armThunks,
+                        IsImportThunk = true,
+                        Value = armThunks.VirtualAddress + thunkOffset,
+                        Descriptor = N_NO_DEAD_STRIP | N_ARM_THUMB_DEF,
+                        Type = N_SECT | N_EXT | N_PEXT,
+                    });
+                    thunkOffset += 4;
+                }
+            }
+
             // We already emitted symbols for all non-debug sections in EmitSectionsAndLayout,
             // these symbols are local and we need to account for them.
             uint symbolIndex = (uint)_symbolTable.Count;
@@ -485,6 +559,8 @@ namespace ILCompiler.ObjectWriter
             foreach ((string name, SymbolDefinition definition) in definedSymbols)
             {
                 MachSection section = _sections[definition.SectionIndex];
+                bool isThumb = !Is64Bit && (section.Flags & S_ATTR_PURE_INSTRUCTIONS) != 0 &&
+                    (definition.Value & 1) != 0;
                 // Sections in our object file should not be altered during native linking as the runtime
                 // depends on the layout generated during compilation. For this reason we mark all symbols
                 // with N_NO_DEAD_STRIP to prevent breaking up sections into subsections during linking.
@@ -492,11 +568,16 @@ namespace ILCompiler.ObjectWriter
                 {
                     Name = name,
                     Section = section,
-                    Value = section.VirtualAddress + (ulong)definition.Value,
-                    Descriptor = N_NO_DEAD_STRIP,
+                    // ObjectWriter tags ARM method definitions in their low bit.
+                    // Mach-O stores that bit in n_desc, not in n_value.
+                    Value = section.VirtualAddress + (ulong)(isThumb ? definition.Value & ~1L : definition.Value),
+                    Descriptor = (ushort)(N_NO_DEAD_STRIP | (!Is64Bit &&
+                        (section.Flags & S_ATTR_PURE_INSTRUCTIONS) != 0 ? N_ARM_THUMB_DEF : 0)),
                     Type = (byte)(N_SECT | N_EXT | (definition.Global ? 0 : N_PEXT)),
                 });
             }
+            sortedDefinedSymbols.AddRange(armThunkSymbols.Values);
+            sortedDefinedSymbols.AddRange(armDataSymbols);
             sortedDefinedSymbols.Sort((symA, symB) => string.CompareOrdinal(symA.Name, symB.Name));
             foreach (MachSymbol definedSymbol in sortedDefinedSymbols)
             {
@@ -506,7 +587,7 @@ namespace ILCompiler.ObjectWriter
             }
 
             _dySymbolTable.ExternalSymbolsIndex = _dySymbolTable.LocalSymbolsCount;
-            _dySymbolTable.ExternalSymbolsCount = (uint)definedSymbols.Count;
+            _dySymbolTable.ExternalSymbolsCount = (uint)sortedDefinedSymbols.Count;
 
             uint savedSymbolIndex = symbolIndex;
             foreach (string externSymbol in undefinedSymbols)
@@ -530,18 +611,149 @@ namespace ILCompiler.ObjectWriter
             _dySymbolTable.UndefinedSymbolsIndex = _dySymbolTable.LocalSymbolsCount + _dySymbolTable.ExternalSymbolsCount;
             _dySymbolTable.UndefinedSymbolsCount = symbolIndex - savedSymbolIndex;
 
+            if (armThunks is not null)
+            {
+                Span<byte> instruction = stackalloc byte[4];
+                foreach ((string name, MachSymbol thunk) in armThunkSymbols)
+                {
+                    int offset = checked((int)(thunk.Value - armThunks.VirtualAddress));
+                    BinaryPrimitives.WriteUInt32LittleEndian(instruction, 0xb800f000); // B.W
+                    unsafe
+                    {
+                        fixed (byte* bytes = instruction)
+                            Relocation.WriteValue(IMAGE_REL_BASED_THUMB_BRANCH24, bytes, -(long)thunk.Value - 4);
+                    }
+                    armThunks.Stream.Position = offset;
+                    armThunks.Stream.Write(instruction);
+                    armThunks.Relocations.Add(new MachRelocation
+                    {
+                        Address = offset, Length = 4, IsExternal = true, IsPCRelative = true,
+                        RelocationType = ARM_THUMB_RELOC_BR22, SymbolOrSectionIndex = _symbolNameToIndex[name],
+                    });
+                    _symbolNameToIndex[name] = _symbolNameToIndex[thunk.Name];
+                }
+            }
+
             EmitCompactUnwindTable(definedSymbols);
         }
 
         private protected override void EmitRelocations(int sectionIndex, List<SymbolicRelocation> relocationList)
         {
-            if (_cpuType == CPU_TYPE_ARM64)
+            if (_cpuType == CPU_TYPE_ARM)
+            {
+                EmitRelocationsArm(sectionIndex, relocationList);
+            }
+            else if (_cpuType == CPU_TYPE_ARM64)
             {
                 EmitRelocationsArm64(sectionIndex, relocationList);
             }
             else
             {
                 EmitRelocationsX64(sectionIndex, relocationList);
+            }
+        }
+
+        private unsafe void EmitRelocationsArm(int sectionIndex, List<SymbolicRelocation> relocationList)
+        {
+            MachSection section = _sections[sectionIndex];
+            if (relocationList.Count == 0)
+                return;
+            section.MakeWritable();
+            Span<byte> data = stackalloc byte[8];
+            relocationList.Reverse();
+            foreach (SymbolicRelocation relocation in relocationList)
+            {
+                uint symbolIndex = _symbolNameToIndex[relocation.SymbolName];
+                MachSymbol symbol = _symbolTable[(int)symbolIndex];
+                bool half = relocation.Type is IMAGE_REL_BASED_THUMB_MOV32 or IMAGE_REL_BASED_THUMB_MOV32_PCREL;
+                int size = half ? 8 : 4;
+                section.Stream.Position = relocation.Offset;
+                section.Stream.ReadExactly(data.Slice(0, size));
+                long value;
+                fixed (byte* bytes = data)
+                    value = Relocation.ReadValue(relocation.Type, bytes) + relocation.Addend;
+                int offset = checked((int)relocation.Offset);
+                uint address = checked((uint)(section.VirtualAddress + (ulong)offset));
+                bool thumbPointer = (symbol.Descriptor & N_ARM_THUMB_DEF) != 0 &&
+                    sectionIndex != EhFrameSectionIndex && !section.IsDwarfSection;
+
+                if (relocation.Type == IMAGE_REL_BASED_HIGHLOW)
+                {
+                    bool localSection = IsSectionSymbolName(relocation.SymbolName);
+                    if (localSection)
+                        value += (long)symbol.Value;
+                    section.Relocations.Add(new MachRelocation
+                    {
+                        Address = offset, Length = 4, RelocationType = ARM_RELOC_VANILLA,
+                        IsExternal = !localSection,
+                        SymbolOrSectionIndex = localSection ? symbol.Section.SectionIndex : symbolIndex,
+                    });
+                }
+                else if (relocation.Type == IMAGE_REL_BASED_THUMB_BRANCH24)
+                {
+                    // Mach-O encodes the pre-link branch destination relative to
+                    // the instruction's actual PC (four bytes after the instruction).
+                    value -= address + 4;
+                    section.Relocations.Add(new MachRelocation
+                    {
+                        Address = offset, Length = 4, RelocationType = ARM_THUMB_RELOC_BR22,
+                        IsExternal = true, IsPCRelative = true, SymbolOrSectionIndex = symbolIndex,
+                    });
+                }
+                else if (half)
+                {
+                    bool relative = relocation.Type == IMAGE_REL_BASED_THUMB_MOV32_PCREL;
+                    uint subtract = address + 12;
+                    if (relative)
+                    {
+                        if (symbol.Section is null)
+                            throw new NotSupportedException($"ARM Mach-O relative MOV32 requires a defined symbol: {symbol.Name}");
+                        value = ((value + (long)symbol.Value) | (thumbPointer ? 1L : 0L)) - subtract;
+                    }
+                    uint bits = unchecked((uint)value);
+                    for (int upper = 1; upper >= 0; upper--)
+                    {
+                        byte length = upper == 0 ? (byte)4 : (byte)8;
+                        section.Relocations.Add(new MachRelocation
+                        {
+                            Address = offset + upper * 4, Length = length,
+                            RelocationType = relative ? ARM_RELOC_HALF_SECTDIFF : ARM_RELOC_HALF,
+                            IsExternal = !relative, SymbolOrSectionIndex = symbolIndex,
+                            IsScattered = relative, ScatteredValue = checked((uint)symbol.Value),
+                        });
+                        section.Relocations.Add(new MachRelocation
+                        {
+                            Address = (int)(upper == 0 ? bits >> 16 : bits & 0xffff), Length = length,
+                            RelocationType = ARM_RELOC_PAIR,
+                            IsScattered = relative, ScatteredValue = subtract,
+                        });
+                    }
+                }
+                else if (relocation.Type is IMAGE_REL_BASED_RELPTR32 or IMAGE_REL_BASED_REL32)
+                {
+                    if (symbol.Section is null)
+                        throw new NotSupportedException($"ARM Mach-O subtraction requires a defined symbol: {symbol.Name}");
+                    value = ((value + (long)symbol.Value) | (thumbPointer ? 1L : 0L)) - address;
+                    if (relocation.Type == IMAGE_REL_BASED_REL32)
+                        value -= 4;
+                    section.Relocations.Add(new MachRelocation
+                    {
+                        Address = offset, Length = 4, RelocationType = ARM_RELOC_SECTDIFF,
+                        IsScattered = true, ScatteredValue = checked((uint)symbol.Value),
+                    });
+                    section.Relocations.Add(new MachRelocation
+                    {
+                        Length = 4, RelocationType = ARM_RELOC_PAIR,
+                        IsScattered = true, ScatteredValue = address,
+                    });
+                }
+                else
+                    throw new NotSupportedException("Unsupported ARM Mach-O relocation: " + relocation.Type);
+
+                fixed (byte* bytes = data)
+                    Relocation.WriteValue(relocation.Type, bytes, value);
+                section.Stream.Position = offset;
+                section.Stream.Write(data.Slice(0, size));
             }
         }
 
@@ -762,6 +974,12 @@ namespace ILCompiler.ObjectWriter
 
         private protected override string ExternCName(string name) => "_" + name;
 
+        private protected override void EmitReferencedData(string symbolName)
+        {
+            if (!Is64Bit && symbolName is not "___security_cookie" and not "_RhpTrapThreads")
+                throw new NotSupportedException("Unsupported ARM Mach-O external data symbol: " + symbolName);
+        }
+
         private static uint GetArm64CompactUnwindCode(byte[] blobData)
         {
             if (blobData == null || blobData.Length == 0)
@@ -923,6 +1141,10 @@ namespace ILCompiler.ObjectWriter
 
         private protected override bool EmitCompactUnwinding(string startSymbolName, ulong length, string lsdaSymbolName, byte[] blob)
         {
+            // iOS ARMv7 uses the DWARF frames emitted by UnixObjectWriter.
+            if (!Is64Bit)
+                return false;
+
             uint encoding = _compactUnwindDwarfCode;
 
             if (_cpuType == CPU_TYPE_ARM64)
@@ -956,11 +1178,11 @@ namespace ILCompiler.ObjectWriter
 
             public static int HeaderSize => 32;
 
-            public void Write(FileStream stream)
+            public void Write(FileStream stream, bool is64Bit)
             {
                 Span<byte> buffer = stackalloc byte[HeaderSize];
 
-                BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(0, 4), MH_MAGIC_64);
+                BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(0, 4), is64Bit ? MH_MAGIC_64 : MH_MAGIC);
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(4, 4), (uint)CpuType);
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(8, 4), CpuSubType);
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(12, 4), FileType);
@@ -969,7 +1191,7 @@ namespace ILCompiler.ObjectWriter
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(24, 4), Flags);
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(28, 4), Reserved);
 
-                stream.Write(buffer);
+                stream.Write(buffer.Slice(0, is64Bit ? HeaderSize : 28));
             }
         }
 
@@ -987,9 +1209,27 @@ namespace ILCompiler.ObjectWriter
 
             public static int HeaderSize => 72;
 
-            public void Write(FileStream stream)
+            public void Write(FileStream stream, bool is64Bit)
             {
                 Span<byte> buffer = stackalloc byte[HeaderSize];
+                buffer.Clear();
+                if (!is64Bit)
+                {
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer, LC_SEGMENT);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(4), 56 + NumberOfSections * 68);
+                    bool nameEncoded = Encoding.UTF8.TryGetBytes(Name, buffer.Slice(8, 16), out _);
+                    Debug.Assert(nameEncoded);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(24), checked((uint)Address));
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(28), checked((uint)Size));
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(32), checked((uint)FileOffset));
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(36), checked((uint)FileSize));
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(40), MaximumProtection);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(44), InitialProtection);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(48), NumberOfSections);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(52), Flags);
+                    stream.Write(buffer.Slice(0, 56));
+                    return;
+                }
 
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(0, 4), LC_SEGMENT_64);
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(4, 4), (uint)(HeaderSize + NumberOfSections * MachSection.HeaderSize));
@@ -1032,6 +1272,16 @@ namespace ILCompiler.ObjectWriter
             public Stream Stream => dataStream;
             public byte SectionIndex { get; set; }
 
+            public void MakeWritable()
+            {
+                if (dataStream.CanWrite)
+                    return;
+                var writable = new MemoryStream(checked((int)dataStream.Length));
+                dataStream.Position = 0;
+                dataStream.CopyTo(writable);
+                dataStream = writable;
+            }
+
             public static int HeaderSize => 80; // 64-bit section
 
             public MachSection(string segmentName, string sectionName, Stream stream)
@@ -1046,7 +1296,7 @@ namespace ILCompiler.ObjectWriter
                 this.relocationCollection = null;
             }
 
-            public void WriteHeader(FileStream stream)
+            public void WriteHeader(FileStream stream, bool is64Bit)
             {
                 Span<byte> buffer = stackalloc byte[HeaderSize];
 
@@ -1055,6 +1305,18 @@ namespace ILCompiler.ObjectWriter
                 Debug.Assert(encoded);
                 encoded = Encoding.UTF8.TryGetBytes(SegmentName, buffer.Slice(16, 16), out _);
                 Debug.Assert(encoded);
+                if (!is64Bit)
+                {
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(32), checked((uint)VirtualAddress));
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(36), checked((uint)Size));
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(40), FileOffset);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(44), Log2Alignment);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(48), RelocationOffset);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(52), NumberOfRelocationEntries);
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(56), Flags);
+                    stream.Write(buffer.Slice(0, 68));
+                    return;
+                }
                 BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(32, 8), VirtualAddress);
                 BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(40, 8), Size);
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(48, 4), FileOffset);
@@ -1075,10 +1337,24 @@ namespace ILCompiler.ObjectWriter
             public bool IsExternal { get; init; }
             public byte Length { get; init; }
             public byte RelocationType { get; init; }
+            public bool IsScattered { get; init; }
+            public uint ScatteredValue { get; init; }
 
             public void Write(FileStream stream)
             {
                 Span<byte> relocationBuffer = stackalloc byte[8];
+                if (IsScattered)
+                {
+                    if (Address < 0 || Address > 0xffffff)
+                        throw new NotSupportedException("ARM scattered relocation offset exceeds 24 bits");
+                    uint lengthBits = Length switch { 1 => 0u, 2 => 1u, 4 => 2u, _ => 3u };
+                    uint scattered = 0x80000000u | (IsPCRelative ? 0x40000000u : 0u) |
+                        (lengthBits << 28) | ((uint)RelocationType << 24) | (uint)Address;
+                    BinaryPrimitives.WriteUInt32LittleEndian(relocationBuffer, scattered);
+                    BinaryPrimitives.WriteUInt32LittleEndian(relocationBuffer.Slice(4), ScatteredValue);
+                    stream.Write(relocationBuffer);
+                    return;
+                }
                 uint info = SymbolOrSectionIndex;
                 info |= IsPCRelative ? 0x1_00_00_00u : 0u;
                 info |= Length switch { 1 => 0u << 25, 2 => 1u << 25, 4 => 2u << 25, _ => 3u << 25 };
@@ -1092,13 +1368,14 @@ namespace ILCompiler.ObjectWriter
 
         private sealed class MachSymbol
         {
+            public bool IsImportThunk { get; init; }
             public string Name { get; init; } = string.Empty;
             public byte Type { get; init; }
             public MachSection Section { get; init; }
             public ushort Descriptor { get; init; }
             public ulong Value { get; init; }
 
-            public void Write(FileStream stream, MachStringTable stringTable)
+            public void Write(FileStream stream, MachStringTable stringTable, bool is64Bit)
             {
                 Span<byte> buffer = stackalloc byte[16];
                 uint nameIndex = stringTable.GetStringOffset(Name);
@@ -1107,9 +1384,12 @@ namespace ILCompiler.ObjectWriter
                 buffer[4] = Type;
                 buffer[5] = (byte)(Section?.SectionIndex ?? 0);
                 BinaryPrimitives.WriteUInt16LittleEndian(buffer.Slice(6, 2), Descriptor);
-                BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(8), Value);
+                if (is64Bit)
+                    BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(8), Value);
+                else
+                    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(8), checked((uint)Value));
 
-                stream.Write(buffer);
+                stream.Write(buffer.Slice(0, is64Bit ? 16 : 12));
             }
         }
 

@@ -33,7 +33,11 @@ struct PInvokeTransitionFrame;
 typedef DPTR(PInvokeTransitionFrame) PTR_PInvokeTransitionFrame;
 typedef DPTR(PAL_LIMITED_CONTEXT) PTR_PAL_LIMITED_CONTEXT;
 
+#if defined(TARGET_APPLE) && defined(TARGET_ARM)
+class alignas(8) StackFrameIterator
+#else
 class StackFrameIterator
+#endif
 {
     friend class AsmOffsets;
 

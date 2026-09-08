@@ -696,7 +696,7 @@ Lnogcs:
 #endif
   ret    x30                    // jump to pc
 
-#elif defined(__arm__) && !defined(__APPLE__)
+#elif defined(__arm__) && (!defined(__APPLE__) || defined(__ARM_DWARF_EH__))
 
 #if !defined(__ARM_ARCH_ISA_ARM)
 #if (__ARM_ARCH_ISA_THUMB == 2)

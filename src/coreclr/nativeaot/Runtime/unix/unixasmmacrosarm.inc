@@ -1,6 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+#ifdef __APPLE__
+#include "armapplecfi.inc"
+#endif
+
 //
 // CONSTANTS -- INTEGER
 //
@@ -29,7 +33,11 @@
 .macro NESTED_ENTRY Name, Section, Handler
         LEAF_ENTRY \Name, \Section
         .ifnc \Handler, NoHandler
+#ifdef __APPLE__
+        .cfi_personality 0x9b, C_FUNC(\Handler)
+#else
         .personality C_FUNC(\Handler)
+#endif
         .endif
 .endm
 
@@ -38,35 +46,86 @@
 .endm
 
 .macro PATCH_LABEL Name
+#ifdef __APPLE__
+        .thumb_func C_FUNC(\Name)
+#else
         .thumb_func
+#endif
         .global C_FUNC(\Name)
 C_FUNC(\Name):
 .endm
 
 .macro ALTERNATE_ENTRY Name
+#ifdef __APPLE__
+        .thumb_func C_FUNC(\Name)
+        .alt_entry C_FUNC(\Name)
+        .private_extern C_FUNC(\Name)
+#endif
         .global C_FUNC(\Name)
+#ifndef __APPLE__
         .type \Name, %function
+#endif
 C_FUNC(\Name):
 .endm
 
 .macro GLOBAL_LABEL Name
+#ifdef __APPLE__
+        .thumb_func C_FUNC(\Name)
+        .alt_entry C_FUNC(\Name)
+        .private_extern C_FUNC(\Name)
+#endif
         .global C_FUNC(\Name)
 C_FUNC(\Name):
 .endm
 
 .macro LEAF_ENTRY Name, Section
+#ifdef __APPLE__
+        .thumb_func C_FUNC(\Name)
+#else
         .thumb_func
+#endif
         .global C_FUNC(\Name)
+#ifndef __APPLE__
         .type \Name, %function
+#endif
 C_FUNC(\Name):
+#ifdef __APPLE__
+        .cfi_startproc
+#else
         .fnstart
+#endif
 .endm
 
 .macro LEAF_END Name, Section
+#ifdef __APPLE__
+        .cfi_endproc
+#else
         .size \Name, .-\Name
         .fnend
+#endif
 .endm
 
+#ifdef __APPLE__
+.macro PREPARE_EXTERNAL_VAR Name, HelperReg
+        movw \HelperReg, :lower16:(Lpointer\@ - (LpointerPC\@ + 4))
+        movt \HelperReg, :upper16:(Lpointer\@ - (LpointerPC\@ + 4))
+LpointerPC\@:
+        add \HelperReg, pc
+        ldr \HelperReg, [\HelperReg]
+        .section __DATA,__nl_symbol_ptr,non_lazy_symbol_pointers
+        .p2align 2
+Lpointer\@:
+        .indirect_symbol C_FUNC(\Name)
+        .long 0
+        .text
+.endm
+
+.macro PREPARE_EXTERNAL_VAR_INDIRECT Name, HelperReg
+        PREPARE_EXTERNAL_VAR \Name, \HelperReg
+        ldr \HelperReg, [\HelperReg]
+.endm
+
+#else
 .macro PREPARE_EXTERNAL_VAR Name, HelperReg
         movw \HelperReg, #:lower16:C_FUNC(\Name) - (. + 12)
         movt \HelperReg, #:upper16:C_FUNC(\Name) - (. + 8)
@@ -80,32 +139,56 @@ C_FUNC(\Name):
         ldr \HelperReg, [\HelperReg]
 .endm
 
+#endif
+
 .macro push_nonvol_reg Register
         push \Register
+#ifdef __APPLE__
+        ARM_CFI_REGS "\Register", 4, 0
+#else
         .save \Register
+#endif
 .endm
 
 .macro pop_nonvol_reg Register
         pop \Register
+#ifdef __APPLE__
+        ARM_CFI_REGS "\Register", 4, 0, 1
+#endif
 .endm
 
 .macro vpush_nonvol_reg Register
         vpush \Register
+#ifdef __APPLE__
+        ARM_CFI_REGS "\Register", 8, 256
+#else
         .vsave \Register
+#endif
 .endm
 
 .macro vpop_nonvol_reg Register
         vpop \Register
+#ifdef __APPLE__
+        ARM_CFI_REGS "\Register", 8, 256, 1
+#endif
 .endm
 
 .macro alloc_stack Size
         sub sp, sp, (\Size)
+#ifdef __APPLE__
+        .cfi_adjust_cfa_offset (\Size)
+#else
         .pad #(\Size)
+#endif
 .endm
 
 .macro free_stack Size
         add sp, sp, (\Size)
+#ifdef __APPLE__
+        .cfi_adjust_cfa_offset -(\Size)
+#else
         .pad #-(\Size)
+#endif
 .endm
 
 .macro POP_CALLEE_SAVED_REGISTERS
@@ -153,12 +236,19 @@ C_FUNC(\Name):
 .endm
 
 .macro PROLOG_STACK_SAVE Register
+#ifdef __APPLE__
+        .cfi_def_cfa_register \Register
+#else
         .setfp \Register, sp
+#endif
         mov \Register, sp
 .endm
 
 .macro EPILOG_STACK_RESTORE Register
         mov sp, \Register
+#ifdef __APPLE__
+        .cfi_def_cfa_register sp
+#endif
 .endm
 
 .macro EPILOG_POP RegList
@@ -171,12 +261,20 @@ C_FUNC(\Name):
 
 .macro PROLOG_STACK_ALLOC Size
         sub sp, sp, #\Size
+#ifdef __APPLE__
+        .cfi_adjust_cfa_offset \Size
+#else
         .pad #\Size
+#endif
 .endm
 
 .macro EPILOG_STACK_FREE Size
         add sp, sp, #\Size
+#ifdef __APPLE__
+        .cfi_adjust_cfa_offset -\Size
+#else
         .pad #-\Size
+#endif
 .endm
 
 //-----------------------------------------------------------------------------

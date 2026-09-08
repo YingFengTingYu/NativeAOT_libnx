@@ -82,7 +82,7 @@ add_custom_command(
 add_custom_command(
     COMMAND ${CMAKE_CXX_COMPILER} ${DEFINITIONS} ${PREPROCESSOR_FLAGS} -I"${NATIVEAOT_RUNTIME_DIR}" -I"${ARCH_SOURCES_DIR}" "${ASM_OFFSETS_CPP}" >"${CMAKE_CURRENT_BINARY_DIR}/AsmOffsets.inc"
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/AsmOffsets.inc"
-    DEPENDS "${ASM_OFFSETS_CPP}" "${NATIVEAOT_RUNTIME_DIR}/AsmOffsets.h"
+    DEPENDS "${ASM_OFFSETS_CPP}" "${NATIVEAOT_RUNTIME_DIR}/AsmOffsets.h" "${ARCH_SOURCES_DIR}/AsmOffsetsCpu.h"
     COMMENT "Generating AsmOffsets.inc"
 )
 

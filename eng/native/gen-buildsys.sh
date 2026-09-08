@@ -71,6 +71,8 @@ if [[ "$CROSSCOMPILE" == "1" ]]; then
 
     TARGET_BUILD_ARCH="$host_arch"
     export TARGET_BUILD_ARCH
+    TARGET_BUILD_OS="$target_os"
+    export TARGET_BUILD_OS
 
     cmake_extra_defines="$cmake_extra_defines -C $scriptroot/tryrun.cmake"
 

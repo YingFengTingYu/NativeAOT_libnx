@@ -31,12 +31,12 @@ LEAF_ENTRY RhpStackProbe, _TEXT
     bfc r5, #0, #PROBE_STEP_LOG2  // r5 points to the **lowest address** on the last probed page
     mov sp, r5
 
-ProbeLoop:
+LOCAL_LABEL(ProbeLoop):
                                            // Immediate operand for the following instruction can not be greater than 4095.
     sub sp, #(PROBE_STEP - 4)     // sp points to the **fourth** byte on the **next page** to probe
     ldr r5, [sp, #-4]!                 // sp points to the lowest address on the **last probed** page
     cmp sp, r4
-    bhi ProbeLoop                      // If (sp > r4), then we need to probe at least one more page.
+    bhi LOCAL_LABEL(ProbeLoop)                      // If (sp > r4), then we need to probe at least one more page.
 
     EPILOG_STACK_RESTORE r7
     EPILOG_POP "{r7}"
