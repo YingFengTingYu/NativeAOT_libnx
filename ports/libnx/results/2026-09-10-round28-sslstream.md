@@ -28,3 +28,11 @@
 原有 System 探针重新链接并在模拟器通过，覆盖随机数、SD 文件位置/截断/向量读写，以及 RomFS 读取、只读和路径映射。NRO 摘要 `b3ccdd7975f0ed7a8e502410ad96ccc50d51b6d916e8f826282291e9975c5383`。日志与结果分别保存在 `artifacts/libnx/sslstream/history`、`artifacts/libnx/system-probe/history`。
 
 游戏仓库保持无代码改动，运行时默认仍采用之前的小型摘要后端。
+
+## 第二阶段：目标端任意流 TLS
+
+运行时初始化在未提供 `HOME` 时设为 `/dotnet`，作为 BCL 持久化数据目录；已有 HOME 不覆盖，没有伪造 passwd 信息。重新编译运行时并重链同一托管对象，NRO 摘要 `ebae77dbcfcc57b2460b69a4ad2a8c5596d68947c583b57f9e9f4fc64720848d`。
+
+第二次模拟器运行通过证书生成、TLS 1.2/1.3 双端握手、ALPN、65537 字节任意流分段传输、读取取消后继续使用、正常 TLS 关闭、主机名/信任错误回调并拒绝、握手取消。这里的 InnerStream 是不含 socket 的双向 Channel 流，确认没有绕过 SslStream 的流语义。
+
+本地 HTTPS 阶段失败，客户端内层异常为 `Received an unexpected EOF or 0 bytes from the transport stream`。后续 WSS、公共 HTTPS 和坏证书用例未执行，本次整体退出 1；不能记为 HTTP/WSS 通过。下一步补充本地 TLS 服务端异常记录定位失败来源。第一阶段实现提交为 `4b2ae81a36d`。

@@ -29,6 +29,8 @@ docker run --rm -v "$PWD:/runtime" nativeaot-libnx-managed:10.0.11 bash ports/li
 
 默认 OpenSSL 目录为 `/dotnet/ssl`，可通过标准 `SSL_CERT_FILE` 和 `SSL_CERT_DIR` 环境变量配置。变量使用托管 Unix 路径；宿主可以将 CA 包放在 RomFS。缺少信任库必须导致证书不受信任，不能改为跳过校验。
 
+运行时在未提供 `HOME` 时使用 `/dotnet` 作为托管持久化目录，供 BCL 的用户证书存储和缓存使用；这不是模拟 Unix 用户或 passwd 数据库。宿主可在运行时启动前设置 `HOME`，将数据限定到自己的应用目录；运行时不覆盖已有值。
+
 探针下载 `ca-bundle.lock.json` 锁定的 Mozilla/curl CA 包，保留 PEM 中的来源和 MPL-2.0 声明。模拟器脚本将其部署到本运行时仓库的独立 SD，不改系统或玩家的信任存储：
 
 ```powershell

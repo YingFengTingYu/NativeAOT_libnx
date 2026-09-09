@@ -33,6 +33,11 @@ void RhFailFast()
 }
 bool PalInit()
 {
+    // Homebrew has no Unix login environment or passwd database. Give the
+    // standard BCL a persistent runtime data root (certificate stores/caches),
+    // while preserving a HOME supplied by the application's native host.
+    if (getenv("HOME") == nullptr && setenv("HOME", "/dotnet", 0) != 0)
+        return false;
     GCConfig::Initialize();
     if (!GCToOSInterface::Initialize())
         return false;
