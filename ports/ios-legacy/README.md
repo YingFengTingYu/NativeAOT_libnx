@@ -149,7 +149,7 @@ Apple ARM32 的原生结构体默认按 4 字节打包，但托管结构体仍�
 
 成功时打印 `publish/` 下的可执行文件路径。请把**整个 `publish/` 目录的内容**一起传到设备，普通内容文件需要和程序一起发布。`build-manifest.json` 记录哈希、架构、特性配置和构建日志目录；每次构建另存工作目录，失败时保留前一次成功产物。静态审计自动检查最低版本、依赖、TLS 和 ARM32 展开表；清单中的 `device_tested` 保持 `false`，不会把编译成功当成真机成功。
 
-当前范围是普通 `net10.0`、`OutputType=Exe` 项目。iOS workload 项目、`.app` 打包、原生共享库输出、卫星资源程序集和含 RID 专属资产的 NuGet 包尚未接入，遇到这些输入会明确报错。加密、TLS/HTTP 与非 invariant 全球化仍不在已验证范围。此入口固定使用 invariant 全球化和 Workstation GC。
+当前范围是普通 `net10.0`、`OutputType=Exe` 项目，`.app` 由下文的独立打包入口生成。iOS workload 项目、原生共享库输出、卫星资源程序集和含 RID 专属资产的 NuGet 包尚未接入，遇到这些输入会明确报错。加密、TLS/HTTP 与非 invariant 全球化仍不在已验证范围。此入口固定使用 invariant 全球化和 Workstation GC。
 
 仓库中的普通项目示例覆盖项目引用、传递 NuGet 依赖、`LibraryImport` 源生成、嵌入资源和内容文件：
 
@@ -173,9 +173,40 @@ python3 ports/ios-legacy/publish-project.py ports/ios-legacy/examples/Hello/Hell
 
 若使用本分支的 MSBuild 集成文件，也可用 `IlcMachOMinimumOSVersion` 属性传入版本。该参数只决定 Mach-O 版本记录；系统兼容性仍由对应的原生运行时和基础库负责。
 
+## UIKit 应用与 `.app` 打包
+
+`examples/UIKit` 是普通 `net10.0` 项目，由 C# 直接 P/Invoke UIKit、Foundation 和 Objective-C runtime，不依赖 macios。它使用 `UIApplicationMain` 和动态注册的应用代理，显示计数按钮、GC 按钮和前后台状态。ARM32 与 ARM64 均已在本轮 iPad 上启动和显示，运行结果及原始快照见 [UIKit 真机记录](results/2026-09-09-uikit.md)。
+
+```bash
+python3 ports/ios-legacy/build-uikit-probe.py --arch arm
+python3 ports/ios-legacy/build-uikit-probe.py --arch arm64
+```
+
+输出位于 `artifacts/legacy-ios/uikit/ios-arm/package/` 与 `ios-arm64/package/`：
+
+- `NativeAOTUIKit32.app` / `NativeAOTUIKit64.app`：含图标、Info.plist 和 ad-hoc 双摘要签名的应用。
+- 同名 `.ipa`：标准 `Payload/<名称>.app` ZIP 包。
+- 同名 `.tar.gz`：供越狱设备系统目录安装使用。
+- `app-manifest.json`：记录 Bundle ID、构建输入和签名后可执行文件哈希。
+
+本轮 Meridian 设备的安装流程：将两个 `.tar.gz` 和 `install-uikit-device.sh` 放在同一文件夹，在 Filza 的 root 终端执行 `/bin/sh install-uikit-device.sh`。脚本只更新本示例的两个 `/Applications/NativeAOTUIKit*.app`，核对现有进程的完整路径后停止对应测试应用，并调用设备已有的 `uicache` 注册桌面图标。再次安装要求脚本自己的所有权记录存在，避免覆盖同名的其他应用。`--check` 可仅检查归档路径和安装位置。只使用本打包入口生成的归档。
+
+安装后从桌面打开 **AOT 32** 或 **AOT 64**。设备已有 `uiopen` 时，也可用 `uiopen nativeaot-uikit32://` / `uiopen nativeaot-uikit64://` 打开本示例。首次运行的两个自动计数来自真正的 `UIControl` action 分发；日志将其标记为自动检查，和用户手动点击分开记录。
+
+这台设备把系统目录应用的 Home 设为 `/var/mobile`，所以本例分别把状态、事件日志和窗口 PNG 保存到 `Documents/NativeAOTUIKit32` / `NativeAOTUIKit64`。应用通过 `NSHomeDirectory` 获取实际 Home，不把这个设备路径写死在 C# 中。窗口快照只是本例自己的窗口；连续点击时合并截图请求，避免阻塞交互。
+
+自行打包其他应用时，先让项目调用 `UIApplicationMain` 并完成其 UI 初始化，再运行：
+
+```bash
+python3 ports/ios-legacy/publish-project.py /路径/MyApp.csproj --arch arm64 --link-framework UIKit --output /专用构建目录
+python3 ports/ios-legacy/package-app.py /专用构建目录/publish --bundle-id org.example.myapp --display-name MyApp --app-name MyApp --output /专用打包目录 --sign
+```
+
+打包器不会把普通控制台 Main 自动改写为 UIKit 入口。`--url-scheme` 可选，应用自身需实现相应的 URL 处理。这里的签名和安装流程用于已越狱设备；未验证普通设备开发者签名、App Store、iPhone 布局或真实 iOS 7。ARM32 的 `CGFloat` 是 `float`，CGRect 返回使用 `objc_msgSend_stret`；ARM64 使用 `double` 和普通 `objc_msgSend`。所有消息发送声明必须匹配实际方法签名。
+
 ## 真机验证
 
-最终确认 iOS 7 的最低兼容性，需要真实 iOS 7 ARM64 设备。iOS 10 的 iPad mini 4 可以先验证 ARM64 上的启动、GC、异常、线程、回调和文件路径，但不能替代 iOS 7 测试。
+最终确认 iOS 7 的最低兼容性，需要对应架构的真实 iOS 7 设备。iOS 10 的 iPad mini 4 可以验证 ARM32/ARM64 上的启动、GC、异常、线程、回调、文件路径和 UIKit 应用，但不能替代 iOS 7 测试。
 
 当前产物是命令行探针：
 

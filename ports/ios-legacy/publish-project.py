@@ -106,7 +106,7 @@ def main():
     if evaluated["TargetFramework"] != "net10.0" or (evaluated["TargetFrameworks"] and not args.framework):
         raise SystemExit("当前支持普通 net10.0 项目；多目标项目请传 --framework net10.0。iOS workload 项目尚未接入。")
     if evaluated["OutputType"].lower() != "exe":
-        raise SystemExit("当前输出为命令行程序，项目需要 OutputType=Exe；静态库和 .app 打包尚未接入。")
+        raise SystemExit("项目需要 OutputType=Exe；原生库输出尚未接入。应用可在生成可执行文件后使用 package-app.py 打包。")
     name = evaluated["AssemblyName"]
     if not name or Path(name).name != name or name in [".", ".."]:
         raise SystemExit("AssemblyName 必须是有效的文件名。")

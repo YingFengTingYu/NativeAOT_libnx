@@ -88,4 +88,4 @@ artifacts/legacy-ios/probes/osx/publish/LegacyIOSProbe
 - `artifacts/legacy-ios/project-interop-device-results.json`：真机状态、退出码和已安装文件的读回校验。
 - `artifacts/log/legacy-ios/ipad-device-job-039.log`、`ipad-device-session-v8.status`：安装整理与会话结束。
 
-当前没有完整 runtime-pack 或 `.app` 打包；含 RID 专属资产的 NuGet 包、卫星资源程序集和原生共享库输出未接入。覆盖的互操作用例通过不代表所有 ABI 情形均已验收；Objective-C 异常跨边界、完整加密、TLS/HTTP、非 invariant 全球化以及 iOS 7 真机仍待验证。
+本阶段尚未提供完整 runtime-pack；后续 `.app` 打包和桌面启动已在 [UIKit 阶段](2026-09-09-uikit.md) 接入。含 RID 专属资产的 NuGet 包、卫星资源程序集和原生共享库输出未接入。覆盖的互操作用例通过不代表所有 ABI 情形均已验收；Objective-C 异常跨边界、完整加密、TLS/HTTP、非 invariant 全球化以及 iOS 7 真机仍待验证。
