@@ -1,0 +1,42 @@
+--- a/providers/implementations/rands/seeding/rand_unix.c
++++ b/providers/implementations/rands/seeding/rand_unix.c
+@@ -327,8 +327,31 @@
+  * syscall_random(): Try to get random data using a system call
+  * returns the number of bytes returned in buf, or < 0 on error.
+  */
++#if defined(__SWITCH__)
++#include <switch.h>
++#endif
+ static ssize_t syscall_random(void *buf, size_t buflen)
+ {
++#if defined(__SWITCH__)
++    /* Libnx CSRNG is the sole entropy source. Never substitute a clock or PRNG. */
++    Result result = csrngInitialize();
++    if (R_SUCCEEDED(result)) {
++        for (size_t offset = 0; R_SUCCEEDED(result) && offset < buflen;) {
++            size_t count = buflen - offset;
++            if (count > 0x1000)
++                count = 0x1000;
++            result = csrngGetRandomBytes((unsigned char *)buf + offset, count);
++            offset += count;
++        }
++        csrngExit();
++    }
++    if (R_FAILED(result)) {
++        OPENSSL_cleanse(buf, buflen);
++        errno = EIO;
++        return -1;
++    }
++    return (ssize_t)buflen;
++#else
+     /*
+      * Note: 'buflen' equals the size of the buffer which is used by the
+      * get_entropy() callback of the RAND_DRBG. It is roughly bounded by
+@@ -402,6 +425,7 @@
+     errno = ENOSYS;
+     return -1;
+ #endif
++#endif /* __SWITCH__ */
+ }
+ #endif /* defined(OPENSSL_RAND_SEED_GETRANDOM) */
+ 

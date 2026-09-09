@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(LibnxRuntimeRoot)' != ''">
+    <OutputType>Library</OutputType>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Static</NativeLib>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
+    <RuntimeFrameworkVersion>10.0.11</RuntimeFrameworkVersion>
+    <IlcExportUnmanagedEntrypoints>true</IlcExportUnmanagedEntrypoints>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <EventSourceSupport>false</EventSourceSupport>
+    <LibnxLoopGcPolls>true</LibnxLoopGcPolls>
+    <DefineConstants>$(DefineConstants);LIBNX_PROBE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(LibnxRuntimeRoot)' != ''"><DirectPInvoke Include="__Internal" /></ItemGroup>
+  <Import Condition="'$(LibnxRuntimeRoot)' != ''" Project="$(LibnxRuntimeRoot)/ports/libnx/Libnx.NativeAOT.targets" />
+  <Import Condition="'$(LibnxRuntimeRoot)' != ''" Project="$(LibnxRuntimeRoot)/ports/libnx/Libnx.PartialNativeLibraries.targets" />
+</Project>

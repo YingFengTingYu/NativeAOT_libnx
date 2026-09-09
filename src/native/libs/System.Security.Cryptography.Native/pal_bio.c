@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 #include "pal_bio.h"
+#include "pal_crypto_io.h"
 
 #include <assert.h>
 
@@ -14,7 +15,7 @@ BIO* CryptoNative_CreateMemoryBio(void)
 BIO* CryptoNative_BioNewFile(const char* filename, const char* mode)
 {
     ERR_clear_error();
-    return BIO_new_file(filename, mode);
+    return PalBioNewFile(filename, mode);
 }
 
 int32_t CryptoNative_BioDestroy(BIO* a)

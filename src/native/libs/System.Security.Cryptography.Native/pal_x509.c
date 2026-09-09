@@ -9,6 +9,23 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include "pal_crypto_io.h"
+
+#if defined(TARGET_LIBNX)
+static time_t PalTimeGm(const struct tm* utc)
+{
+    // Newlib has mktime (local time), but not timegm. Use OpenSSL's UTC
+    // calendar arithmetic without changing process-wide timezone state.
+    const struct tm epoch = { .tm_year = 70, .tm_mon = 0, .tm_mday = 1 };
+    int days, seconds;
+    c_static_assert(sizeof(time_t) == sizeof(int64_t));
+    if (OPENSSL_gmtime_diff(&days, &seconds, &epoch, utc) != 1)
+        return (time_t)-1;
+    return (time_t)days * 86400 + seconds;
+}
+#else
+#define PalTimeGm timegm
+#endif
 
 c_static_assert(PAL_X509_V_OK == X509_V_OK);
 c_static_assert(PAL_X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT == X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT);
@@ -436,7 +453,7 @@ X509* CryptoNative_X509UpRef(X509* x509)
 
 static DIR* OpenUserStore(const char* storePath, char** pathTmp, size_t* pathTmpSize, char** nextFileWrite)
 {
-    DIR* trustDir = opendir(storePath);
+    DIR* trustDir = PalOpenDir(storePath);
 
     if (trustDir == NULL)
     {
@@ -487,7 +504,7 @@ static X509* ReadNextPublicCert(DIR* dir, X509Stack* tmpStack, char* pathTmp, si
             // if d_name was full-length it might not have a trailing null.
             nextFileWrite[len] = 0;
 
-            FILE* fp = fopen(pathTmp, "r");
+            FILE* fp = PalFOpen(pathTmp, "r");
 
             if (fp != NULL)
             {
@@ -1017,14 +1034,14 @@ static X509VerifyStatusCode CheckOcspGetExpiry(OCSP_REQUEST* req,
 
                             if (nextupd != NULL && ASN1_TIME_to_tm(nextupd, &updTm) == 1)
                             {
-                               *expiry = timegm(&updTm);
+                               *expiry = PalTimeGm(&updTm);
                             }
                             else if (ASN1_TIME_to_tm(thisupd, &updTm) == 1)
                             {
                                 // If we're doing server side OCSP stapling and the response
                                 // has no nextUpd, treat it as a 24-hour expiration for refresh
                                 // purposes.
-                                *expiry = timegm(&updTm) + (24 * 60 * 60);
+                                *expiry = PalTimeGm(&updTm) + (24 * 60 * 60);
                             }
                         }
                     }
@@ -1121,7 +1138,7 @@ int32_t CryptoNative_X509ChainGetCachedOcspStatus(X509_STORE_CTX* storeCtx, char
         return (int32_t)ret;
     }
 
-    BIO* bio = BIO_new_file(fullPath, "rb");
+    BIO* bio = PalBioNewFile(fullPath, "rb");
     OCSP_RESPONSE* resp = NULL;
 
     if (bio != NULL)
@@ -1148,7 +1165,7 @@ int32_t CryptoNative_X509ChainGetCachedOcspStatus(X509_STORE_CTX* storeCtx, char
     // may have been reported while determining we want to delete it and ask again fresh.
     if (ret == PAL_X509_V_ERR_UNABLE_TO_GET_CRL)
     {
-        unlink(fullPath);
+        PalUnlink(fullPath);
         ERR_clear_error();
     }
 
@@ -1244,7 +1261,7 @@ static int32_t X509ChainVerifyOcsp(X509_STORE_CTX* storeCtx, X509* subject, X509
         if (fullPath != NULL)
         {
             int clearErr = 1;
-            BIO* bio = BIO_new_file(fullPath, "wb");
+            BIO* bio = PalBioNewFile(fullPath, "wb");
 
             if (bio != NULL)
             {
@@ -1262,7 +1279,7 @@ static int32_t X509ChainVerifyOcsp(X509_STORE_CTX* storeCtx, X509* subject, X509
             if (clearErr)
             {
                 ERR_clear_error();
-                unlink(fullPath);
+                PalUnlink(fullPath);
             }
 
             free(fullPath);

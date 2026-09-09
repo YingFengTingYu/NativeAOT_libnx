@@ -1,0 +1,30 @@
+# 第二十八轮：运行时 SslStream / OpenSSL 适配
+
+本轮从 `4b4da26c404` 开始，目标是让标准 `SslStream`、`HttpClient` 和 `ClientWebSocket` 在 libnx 运行时工作，收回此前游戏自有 TLS 传输的职责。实现与探针均位于独立运行时仓库。
+
+## 第一阶段：后端构建与宿主对照
+
+新增可选 `LIBNX_USE_OPENSSL=1`，交叉编译固定 OpenSSL 3.5.8（官方源码 SHA-256 `a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2`），复用上游 crypto/X.509/SSL 原生适配层。保留 .NET Unix 托管 TLS 实现及任意 InnerStream 的 memory BIO 路径，没有在游戏 Core 添加补救接口，也没有绑定 libnx SSL socket 服务来冒充任意流。
+
+平台补丁接入 libnx CSRNG，关闭不适用的 syslog/setuid 检查，使用 OpenSSL 自有对齐分配路径。证书原生文件访问共享现有 SD/RomFS 映射；OCSP 时间转换在 libnx 使用 OpenSSL UTC 日历运算，其他平台保持原调用。具体配置与重现命令见 [OpenSSL 后端说明](../openssl/README.md)。
+
+实际通过：
+
+- devkitA64 GCC 15.2.0 / newlib / libnx 编译 OpenSSL 静态库。
+- `.NET System.Security.Cryptography.Native.OpenSsl` 的全部 35 项原生编译/归档步骤通过。功能链接探测中 EC2M、ALPN、ChaCha20-Poly1305、SHA3、DigestSqueeze、消息签名入口通过；Engine 按配置禁用。
+- 修改后的 crypto PAL 在 Linux x64 宿主独立编译通过。
+- Windows 与 Linux .NET 10 宿主探针通过：ECDSA 临时证书/PKCS#12、TLS 1.2/1.3、ALPN、65537 字节任意流分段传输、读取取消后继续使用、close_notify、leaveInnerStreamOpen、主机名/信任错误回调并拒绝、握手取消、本地 HTTPS 和 WSS 二进制往返/关闭。
+
+编译产物摘要：
+
+- libssl.a：`468f139b9e3253a13a07d563666c81bdc360a5d5ef7c052ecbce45d72e5cc1e4`
+- libcrypto.a：`13b03dd7aa4a19699ddb16473409a22e1ab8635c4838bcbc1337404f16247f95`
+- crypto PAL：`7a0bc2072aaee3991eeedb5a548c75dda7e74334435b82ec63817df021c11b5d`
+
+失败与修正记录：初始 OpenSSL 构建缺少 syslog.h；初始功能链接探测暴露 newlib 缺少 posix_memalign 和 POSIX UID 函数；初始 PAL 编译缺少 timegm。均经上述目标限定的补丁处理后重新构建。Windows Schannel 无法直接使用本探针最初的临时 ECDSA 密钥，探针改为正常 PKCS#12 重导入，仍在 Dispose 时释放测试密钥；这属于宿主探针修正。
+
+托管 ARM64 NRO 链接通过，摘要为 `4c15c7ba7daf339103ab884fddcccc8b573cb72e2fef1c97ffb20f1c2b92e331`。第一次模拟器运行通过 ECDSA 证书生成/PKCS#12，但 TLS 1.2 握手前打开用户证书存储时抛出 `The home directory of the current user could not be determined`，退出 1。libnx 没有 Unix passwd 数据库，下一阶段补充托管环境目录约定；本次不记为目标 TLS 通过。
+
+原有 System 探针重新链接并在模拟器通过，覆盖随机数、SD 文件位置/截断/向量读写，以及 RomFS 读取、只读和路径映射。NRO 摘要 `b3ccdd7975f0ed7a8e502410ad96ccc50d51b6d916e8f826282291e9975c5383`。日志与结果分别保存在 `artifacts/libnx/sslstream/history`、`artifacts/libnx/system-probe/history`。
+
+游戏仓库保持无代码改动，运行时默认仍采用之前的小型摘要后端。

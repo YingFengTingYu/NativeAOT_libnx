@@ -1,0 +1,8 @@
+{
+  "url": "https://curl.se/ca/cacert-2026-08-13.pem",
+  "sha256": "f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9",
+  "certificateCount": 121,
+  "sourceDate": "2026-08-13",
+  "license": "MPL-2.0",
+  "provenance": "https://curl.se/docs/caextract.html"
+}

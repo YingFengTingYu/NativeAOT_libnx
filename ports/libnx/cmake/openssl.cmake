@@ -1,0 +1,26 @@
+# Reuse upstream crypto, X509 and memory-BIO TLS implementations. This option
+# affects only the libnx build; existing desktop/mobile configurations are untouched.
+set(OPENSSL_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../artifacts/libnx/openssl/install")
+set(OPENSSL_USE_STATIC_LIBS TRUE)
+set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "libnx OpenSSL headers" FORCE)
+set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/lib/libcrypto.a" CACHE FILEPATH "libnx libcrypto" FORCE)
+set(OPENSSL_SSL_LIBRARY "${OPENSSL_ROOT_DIR}/lib/libssl.a" CACHE FILEPATH "libnx libssl" FORCE)
+set(FEATURE_DISTRO_AGNOSTIC_SSL OFF)
+set(GEN_SHARED_LIB OFF)
+set(STATIC_LIB_DESTINATION lib)
+if(NOT EXISTS "${OPENSSL_ROOT_DIR}/lib/libssl.a")
+  message(FATAL_ERROR "Run ports/libnx/build-openssl.sh before configuring LIBNX_USE_OPENSSL.")
+endif()
+file(SHA256 "${OPENSSL_ROOT_DIR}/lib/libcrypto.a" openssl_hash)
+if(NOT "${LIBNX_OPENSSL_CONFIG_HASH}" STREQUAL "${openssl_hash}")
+  foreach(feature EC2M ALPN CHACHA20POLY1305 SHA3 SHA3_SQUEEZE EVP_PKEY_SIGN_MESSAGE_INIT ENGINE)
+    unset(HAVE_OPENSSL_${feature} CACHE)
+  endforeach()
+  set(LIBNX_OPENSSL_CONFIG_HASH "${openssl_hash}" CACHE STRING "Configured libcrypto digest" FORCE)
+endif()
+include_directories("${CLR_SRC_NATIVE_DIR}" "${CLR_SRC_NATIVE_DIR}/libs/Common"
+  "${CMAKE_CURRENT_BINARY_DIR}/system-native-config")
+add_subdirectory("${CLR_SRC_NATIVE_DIR}/libs/System.Security.Cryptography.Native" openssl-pal)
+target_include_directories(objlib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/openssl-pal")
+target_include_directories(System.Security.Cryptography.Native.OpenSsl-Static PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/openssl-pal")

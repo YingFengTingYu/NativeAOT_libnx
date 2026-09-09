@@ -36,6 +36,8 @@ VMR 的 [source-manifest.json](https://github.com/dotnet/dotnet/blob/e2f47b0110e
 
 ## 本地构建原则
 
+标准 `SslStream` 的可选 OpenSSL 运行时后端正在接入，构建、宿主对照和目标验证进度见[第二十八轮](results/2026-09-10-round28-sslstream.md)，使用方式见[后端说明](openssl/README.md)。请按阶段区分原生编译、宿主测试和模拟器结果。
+
 IPv4 Socket、DNS、poll 异步队列、取消、HTTP 和明文 WebSocket 的公开 libnx 接入及模拟器验证见[第二十七轮](results/2026-09-08-round27-network.md)。IPv6、stock Linux BCL 网卡枚举、模拟器组播和辅助数据并未因此可用；宿主需在退出前调用网络事件静默接口。
 
 文件路径新增保留挂载点 `/romfs` → `romfs:/`，由宿主使用公开 libnx `romfsInit()` 挂载。其余 Unix 绝对路径仍映射到 SD，存档位置保持原约定。原生接口、托管游戏验证与限制见 [第二十六轮](results/2026-09-08-round26-romfs.md)。

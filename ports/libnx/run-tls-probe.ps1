@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$EdenPath,
-    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System', 'Crypto', 'Network', 'NetworkManaged')]
+    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System', 'Crypto', 'Network', 'NetworkManaged', 'SslStream')]
     [string]$Suite = 'Tls'
 )
 
@@ -57,13 +57,23 @@ flush_line=true
 '@
 [System.IO.File]::WriteAllText($configPath, $config, [System.Text.UTF8Encoding]::new($false))
 
+if ($Suite -eq 'SslStream')
+{
+    $bundle = Join-Path $outputRoot 'sslstream/cert.pem'
+    $trust = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'openssl/ca-bundle.lock.json') -Raw | ConvertFrom-Json
+    if ((Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash -ne $trust.sha256) { throw 'CA bundle checksum mismatch.' }
+    $trustDirectory = Join-Path $profileRoot 'sdmc/dotnet/ssl'
+    New-Item -ItemType Directory -Force -Path $trustDirectory | Out-Null
+    Copy-Item -LiteralPath $bundle -Destination (Join-Path $trustDirectory 'cert.pem') -Force
+}
+
 $allPassed = $true
 $modes = if ($Suite -eq 'Tls') { @('libnx', 'linux_control') } else { @($Suite.ToLowerInvariant()) }
-$probeDirectory = if ($Suite -eq 'NetworkManaged') { 'network-managed' } else { $Suite.ToLowerInvariant() + '-probe' }
-$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } 'Crypto' { 'AOTCRYPTO' } 'Network' { 'AOTNET' } 'NetworkManaged' { 'AOTMANET' } }
+$probeDirectory = if ($Suite -eq 'NetworkManaged') { 'network-managed' } elseif ($Suite -eq 'SslStream') { 'sslstream' } else { $Suite.ToLowerInvariant() + '-probe' }
+$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } 'Crypto' { 'AOTCRYPTO' } 'Network' { 'AOTNET' } 'NetworkManaged' { 'AOTMANET' } 'SslStream' { 'AOTSSL' } }
 foreach ($mode in $modes)
 {
-    $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } elseif ($Suite -eq 'NetworkManaged') { 'managed-probe.nro' } else { "nativeaot-$mode.nro" }
+    $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } elseif ($Suite -in @('NetworkManaged', 'SslStream')) { 'managed-probe.nro' } else { "nativeaot-$mode.nro" }
     $nro = Join-Path $outputRoot "$probeDirectory/$nroName"
     $nro = (Resolve-Path -LiteralPath $nro).Path
     $emulatorLog = Join-Path $profileRoot 'log/eden_log.txt'
@@ -73,7 +83,11 @@ foreach ($mode in $modes)
     }
     $process = Start-Process -FilePath $executablePath -WindowStyle Hidden -PassThru `
         -ArgumentList @('-g', ('"{0}"' -f $nro))
-    $finished = $process.WaitForExit(45000)
+    $actual = Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
+    if ($actual -and $actual.ExecutablePath -ne $executablePath) { throw 'Unexpected emulator executable.' }
+    $limitSeconds = if ($Suite -eq 'SslStream') { 120 } else { 45 }
+    $waitTimer = [Diagnostics.Stopwatch]::StartNew()
+    do { $finished = $process.WaitForExit(1000) } while (-not $finished -and $waitTimer.Elapsed.TotalSeconds -lt $limitSeconds)
     if (-not $finished)
     {
         Stop-Process -Id $process.Id
@@ -88,7 +102,17 @@ foreach ($mode in $modes)
     }
     $observed = @([regex]::Matches($logText, ('\[' + $prefix + '\] ([^\r\n]+)')) |
         ForEach-Object { $_.Groups[1].Value })
-    $required = if ($Suite -eq 'NetworkManaged')
+    $required = if ($Suite -eq 'SslStream')
+    {
+        @('socket.init=0', 'begin=1', 'crypto.certificate=1',
+          'memory.Tls12.fragment_alpn_cancel_close=1', 'memory.Tls13.fragment_alpn_cancel_close=1',
+          'reject.RemoteCertificateNameMismatch=1', 'reject.RemoteCertificateChainErrors=1',
+          'handshake.cancel=1', 'https.local=1', 'wss.binary_close=1',
+          'https.public_default_trust=1', 'https.reject.self-signed.badssl.com=1',
+          'https.reject.wrong.host.badssl.com=1', 'https.reject.expired.badssl.com=1',
+          'native.quiesce=1', 'pass=1')
+    }
+    elseif ($Suite -eq 'NetworkManaged')
     {
         @('socket.init=0', 'dns=1', 'tcp.async_rearm=64', 'receive.cancel=1', 'receive.after_cancel=1',
           'receive.dispose=1', 'udp.async=16', 'udp.packet_info_fallback=1', 'http.get=1', 'websocket.roundtrip_close=1',
@@ -138,7 +162,7 @@ foreach ($mode in $modes)
         Case = $mode
         TestPassed = $passed
         ExpectedFailure = $mode -eq 'linux_control'
-        ManagedRuntimeVerified = $passed -and $Suite -eq 'NetworkManaged'
+        ManagedRuntimeVerified = $passed -and $Suite -in @('NetworkManaged', 'SslStream')
         HardwareVerified = $false
         ExitCode = $process.ExitCode
         TimedOut = -not $finished

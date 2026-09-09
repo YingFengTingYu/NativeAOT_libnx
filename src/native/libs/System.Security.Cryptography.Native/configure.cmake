@@ -4,6 +4,11 @@ include(CheckSourceCompiles)
 
 set(CMAKE_REQUIRED_INCLUDES ${OPENSSL_INCLUDE_DIR})
 set(CMAKE_REQUIRED_LIBRARIES ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY})
+if(CLR_CMAKE_TARGET_LIBNX)
+    # Static libssl consumes libcrypto; its entropy source consumes public libnx.
+    set(CMAKE_REQUIRED_LIBRARIES ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY}
+        "${LIBNX_DEVKITPRO}/libnx/lib/libnx.a")
+endif()
 set(CMAKE_REQUIRED_DEFINITIONS -DOPENSSL_API_COMPAT=0x10100000L)
 
 check_function_exists(

@@ -28,6 +28,10 @@ if(CLR_CMAKE_TARGET_LIBNX)
     "${CMAKE_CURRENT_SOURCE_DIR}/nativeaot/Runtime/libnx"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Native" "${CMAKE_CURRENT_BINARY_DIR}/system-native-config")
   target_link_libraries(System.Native PRIVATE aotminipal)
+  option(LIBNX_USE_OPENSSL "Build the complete OpenSSL crypto/TLS PAL for libnx" OFF)
+  if(LIBNX_USE_OPENSSL)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/../../ports/libnx/cmake/openssl.cmake")
+  else()
   add_library(System.Security.Cryptography.Native.Libnx STATIC
     "${CLR_SRC_NATIVE_DIR}/libs/System.Security.Cryptography.Native.Libnx/pal_digest.c"
     "${CLR_SRC_NATIVE_DIR}/libs/System.Security.Cryptography.Native.Libnx/pal_random.c")
@@ -36,5 +40,6 @@ if(CLR_CMAKE_TARGET_LIBNX)
     "${LIBNX_DEVKITPRO}/portlibs/switch/include")
   target_link_libraries(System.Security.Cryptography.Native.Libnx PRIVATE
     "${LIBNX_DEVKITPRO}/portlibs/switch/lib/libmbedcrypto.a")
+  endif()
   include("${CMAKE_CURRENT_SOURCE_DIR}/../../ports/libnx/cmake/compression.cmake")
 endif()

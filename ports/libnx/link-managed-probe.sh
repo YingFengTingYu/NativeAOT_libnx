@@ -12,6 +12,13 @@ rm -f "$output/managed-probe.nro"
 flags=(-g -O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=local-exec
        -fPIE -ffunction-sections -fdata-sections -D__SWITCH__ -I"$DEVKITPRO/libnx/include")
 extra_libs=()
+crypto_libs=("$native/libSystem.Security.Cryptography.Native.Libnx.a"
+    "$DEVKITPRO/portlibs/switch/lib/libmbedcrypto.a")
+if [[ "${LIBNX_USE_OPENSSL:-0}" == 1 ]]; then
+    crypto_libs=("$native/openssl-pal/libSystem.Security.Cryptography.Native.OpenSsl.a"
+        "$repo_root/artifacts/libnx/openssl/install/lib/libssl.a"
+        "$repo_root/artifacts/libnx/openssl/install/lib/libcrypto.a")
+fi
 if [[ -n "${LIBNX_PROBE_PKG_CONFIG:-}" ]]; then
     export PKG_CONFIG_LIBDIR="$DEVKITPRO/portlibs/switch/lib/pkgconfig"
     read -r -a package_flags <<< "$(pkg-config --cflags "$LIBNX_PROBE_PKG_CONFIG")"
@@ -26,8 +33,7 @@ fi
     -Wl,--start-group "$native/nativeaot/Runtime/Full/libRuntime.WorkstationGC.a" \
     "$native/shared_minipal/libaotminipal.a" \
     "$native/libSystem.Native.a" \
-    "$native/libSystem.Security.Cryptography.Native.Libnx.a" \
-    "$DEVKITPRO/portlibs/switch/lib/libmbedcrypto.a" \
+    "${crypto_libs[@]}" \
     "$native/libSystem.IO.Compression.Native.a" \
     "$native/_deps/fetchzlibng-build/libz.a" \
     "$native/_deps/brotli-build/libbrotlienc.a" \
@@ -46,6 +52,10 @@ cp "$repo_root/THIRD-PARTY-NOTICES.TXT" "$output/licenses/dotnet-third-party-not
 cp "$repo_root/src/native/external/zlib-ng/LICENSE.md" "$output/licenses/zlib-ng.txt"
 cp "$repo_root/src/native/external/brotli/LICENSE" "$output/licenses/brotli.txt"
 cp "$DEVKITPRO/portlibs/switch/licenses/switch-mbedtls/LICENSE" "$output/licenses/mbedtls.txt"
+if [[ "${LIBNX_USE_OPENSSL:-0}" == 1 ]]; then
+    mkdir -p "$output/licenses/openssl"
+    cp "$repo_root/artifacts/libnx/openssl/install/licenses/"* "$output/licenses/openssl/"
+fi
 for probe_licenses in "$(dirname -- "$LIBNX_PROBE_HOST")/../licenses" "${LIBNX_EXTRA_LICENSES:-}"; do
     if [[ -d "$probe_licenses" ]]; then
         for license in "$probe_licenses"/*; do
