@@ -255,3 +255,11 @@ cat run.log
 `publish-project.py` 支持卫星资源程序集；`--strip` 在签名前去掉本地符号，并在构建目录保留 `.unstripped`。静态审核使用 `--symbols-binary` 检查与最终文件 UUID 相同的符号副本，同时拒绝 `__TEXT` / `__AOT` 的 dyld 绑定。`package-app.py` 支持 `--orientation landscape`、`--hide-status-bar` 和 `--version`。
 
 2026-09-09 的完整游戏 ARM32 对象约含 24.8 MiB 托管代码，已通过链接及静态审核。新的跳转布局在 iOS 10.0.2 上通过 8 组运行时探针；游戏客户端也分别在 ARM32 / ARM64 完成进入关卡和音乐的人工验证。探针不代替游戏功能测试，未覆盖的模式与系统版本仍需继续验证。相关验证记录见 [2026-09-09](results/2026-09-09.md)。
+
+## 应用文件共享与签名声明
+
+`package-app.py --additional-info-plist /path/AppInfo.plist` 可以合并应用特有的文件共享、URL 查询等元数据；不允许覆盖可执行文件、Bundle ID、设备类型或最低系统版本。`--entitlements /path/Entitlements.plist --sign` 为越狱测试签名附加权限声明，不会替用户创建开发者证书或 provisioning profile。
+
+2026-09-09 在 iOS 10.0.2 实测，系统文档选择器要求 `com.apple.developer.icloud-services` 包含 `CloudDocuments`。仅加入 iCloud 容器标识仍会触发 UIKit 断言；仅声明文档服务即可通过四种选择器／菜单构造检查，无需填入私有容器 ID。游戏客户端添加此声明后，用户确认 ARM32、ARM64 均可导入导出。原生桥接应在 Objective-C 内捕获异常，不能让原生异常穿过托管帧。
+
+此外，开启 `LSSupportsOpeningDocumentsInPlace` 后，iOS 10 要求应用委托实现 `application:openURL:options:`，只保留旧式 URL 回调会在启动时触发断言。iOS 7 兼容宿主可以同时实现两个入口。文件共享标记不保证系统目录安装具备普通应用容器，应分别验证 Filza、iTunes 与系统“文件”的访问方式。

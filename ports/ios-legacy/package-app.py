@@ -57,9 +57,13 @@ def main():
     parser.add_argument("--orientation", choices=["portrait", "landscape"], default="portrait")
     parser.add_argument("--hide-status-bar", action="store_true")
     parser.add_argument("--version", default="1.0", help="应用显示版本")
+    parser.add_argument("--additional-info-plist", type=Path, help="附加应用元数据，不能覆盖可执行文件、标识或最低系统版本")
     parser.add_argument("--output", type=Path, required=True, help="专用打包输出目录")
+    parser.add_argument("--entitlements", type=Path, help="签名使用的权限声明；需要 --sign")
     parser.add_argument("--sign", action="store_true", help="为越狱设备生成 ad-hoc 双摘要签名")
     args = parser.parse_args()
+    if args.entitlements and not args.sign:
+        parser.error("--entitlements 需要同时指定 --sign。")
     if not re.fullmatch(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", args.bundle_id):
         parser.error("--bundle-id 需要反向域名形式的标识符。")
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.app_name):
@@ -110,11 +114,24 @@ def main():
         info["UIInterfaceOrientation"] = "UIInterfaceOrientationLandscapeLeft"
     if args.hide_status_bar:
         info["UIStatusBarHidden"] = True
+    if args.additional_info_plist:
+        with args.additional_info_plist.open("rb") as stream:
+            extra_info = plistlib.load(stream)
+        protected = {"CFBundleExecutable", "CFBundleIdentifier", "CFBundlePackageType", "CFBundleSupportedPlatforms", "MinimumOSVersion", "UIDeviceFamily"}
+        if not isinstance(extra_info, dict) or protected.intersection(extra_info):
+            parser.error("附加 Info.plist 必须是字典，且不能覆盖程序身份、设备类型或最低系统要求。")
+        info.update(extra_info)
     (bundle / "Info.plist").write_bytes(plistlib.dumps(info))
     (bundle / "PkgInfo").write_bytes(b"APPL????")
     if args.sign:
-        subprocess.run(["codesign", "--force", "--sign", "-", "--identifier", args.bundle_id,
-                        "--digest-algorithm=sha1,sha256", str(bundle)], check=True)
+        signature = ["codesign", "--force", "--sign", "-", "--identifier", args.bundle_id,
+                     "--digest-algorithm=sha1,sha256"]
+        if args.entitlements:
+            with args.entitlements.open("rb") as stream:
+                if not isinstance(plistlib.load(stream), dict):
+                    parser.error("权限声明必须是 plist 字典。")
+            signature += ["--entitlements", str(args.entitlements.resolve())]
+        subprocess.run([*signature, str(bundle)], check=True)
         subprocess.run(["codesign", "--verify", "--strict", str(bundle)], check=True)
     elif manifest["signed"]:
         # A binary signature with a different identifier isn't a bundle signature.
