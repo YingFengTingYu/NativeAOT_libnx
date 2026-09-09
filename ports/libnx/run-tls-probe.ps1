@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$EdenPath,
-    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System', 'Crypto', 'Network', 'NetworkManaged', 'SslStream')]
+    [ValidateSet('Tls', 'Context', 'Memory', 'Threads', 'System', 'Crypto', 'Network', 'NetworkManaged', 'SslStream', 'SocketPeek')]
     [string]$Suite = 'Tls'
 )
 
@@ -70,7 +70,7 @@ if ($Suite -eq 'SslStream')
 $allPassed = $true
 $modes = if ($Suite -eq 'Tls') { @('libnx', 'linux_control') } else { @($Suite.ToLowerInvariant()) }
 $probeDirectory = if ($Suite -eq 'NetworkManaged') { 'network-managed' } elseif ($Suite -eq 'SslStream') { 'sslstream' } else { $Suite.ToLowerInvariant() + '-probe' }
-$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } 'Crypto' { 'AOTCRYPTO' } 'Network' { 'AOTNET' } 'NetworkManaged' { 'AOTMANET' } 'SslStream' { 'AOTSSL' } }
+$prefix = switch ($Suite) { 'Tls' { 'AOTTLS' } 'Context' { 'AOTCTX' } 'Memory' { 'AOTMEM' } 'Threads' { 'AOTTHR' } 'System' { 'AOTSYS' } 'Crypto' { 'AOTCRYPTO' } 'Network' { 'AOTNET' } 'NetworkManaged' { 'AOTMANET' } 'SslStream' { 'AOTSSL' } 'SocketPeek' { 'AOTPEEK' } }
 foreach ($mode in $modes)
 {
     $nroName = if ($Suite -eq 'Tls') { "nativeaot-tls-$mode.nro" } elseif ($Suite -in @('NetworkManaged', 'SslStream')) { 'managed-probe.nro' } else { "nativeaot-$mode.nro" }
@@ -102,7 +102,11 @@ foreach ($mode in $modes)
     }
     $observed = @([regex]::Matches($logText, ('\[' + $prefix + '\] ([^\r\n]+)')) |
         ForEach-Object { $_.Groups[1].Value })
-    $required = if ($Suite -eq 'SslStream')
+    $required = if ($Suite -eq 'SocketPeek')
+    {
+        @('begin=1', 'peek.count=1', 'peek.byte=22', 'read.count=4', 'read.first=22', 'peek.preserves_data=1', 'pass=1')
+    }
+    elseif ($Suite -eq 'SslStream')
     {
         @('socket.init=0', 'begin=1', 'crypto.certificate=1',
           'memory.Tls12.fragment_alpn_cancel_close=1', 'memory.Tls13.fragment_alpn_cancel_close=1',

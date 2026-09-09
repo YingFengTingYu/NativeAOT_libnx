@@ -137,6 +137,12 @@ internal static class Program
         catch { stream.Dispose(); throw; }
     }
 
+    private static async Task ObserveServer(Task operation)
+    {
+        try { await operation; }
+        catch (Exception exception) { Record("server.error=" + exception); throw; }
+    }
+
     private static async Task RejectCertificate(X509Certificate2 certificate, string host, bool trust,
         SslPolicyErrors expectedErrors, CancellationToken token)
     {
@@ -198,7 +204,7 @@ internal static class Program
         using TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        Task serving = ServeTls(listener, certificate, token);
+        Task serving = ObserveServer(ServeTls(listener, certificate, token));
         using SocketsHttpHandler handler = new()
         {
             UseProxy = false,
@@ -228,7 +234,7 @@ internal static class Program
         for (int request = 0; request < 2; request++)
         {
             using TcpClient connection = await listener.AcceptTcpClientAsync(token);
-            using SslStream tls = new(connection.GetStream());
+            using SslStream tls = new(new HeaderTraceStream(connection.GetStream()));
             await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
             {
                 ServerCertificate = certificate, ApplicationProtocols = [SslApplicationProtocol.Http11]
@@ -281,6 +287,39 @@ internal static class Program
         }
     }
 #endif
+
+    private sealed class HeaderTraceStream(Stream inner) : Stream
+    {
+        private bool traced;
+        public override bool CanRead => inner.CanRead;
+        public override bool CanWrite => inner.CanWrite;
+        public override bool CanSeek => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() => inner.Flush();
+        public override Task FlushAsync(CancellationToken token) => inner.FlushAsync(token);
+        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+        public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken token)
+            => ReadAsync(buffer.AsMemory(offset, count), token).AsTask();
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken token)
+            => inner.WriteAsync(buffer, offset, count, token);
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+        {
+            int count = await inner.ReadAsync(buffer, token);
+            if (!traced && count > 0)
+            {
+                Record("tcp.client_hello_prefix=" + Convert.ToHexString(buffer.Span[..Math.Min(count, 16)]));
+                traced = true;
+            }
+            return count;
+        }
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token = default)
+            => inner.WriteAsync(buffer, token);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing) { if (disposing) inner.Dispose(); base.Dispose(disposing); }
+    }
 
     // No socket exists underneath these streams. Small reads force SslStream
     // to reassemble TLS records instead of relying on a descriptor shortcut.

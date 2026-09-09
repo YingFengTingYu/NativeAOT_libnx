@@ -36,3 +36,23 @@
 第二次模拟器运行通过证书生成、TLS 1.2/1.3 双端握手、ALPN、65537 字节任意流分段传输、读取取消后继续使用、正常 TLS 关闭、主机名/信任错误回调并拒绝、握手取消。这里的 InnerStream 是不含 socket 的双向 Channel 流，确认没有绕过 SslStream 的流语义。
 
 本地 HTTPS 阶段失败，客户端内层异常为 `Received an unexpected EOF or 0 bytes from the transport stream`。后续 WSS、公共 HTTPS 和坏证书用例未执行，本次整体退出 1；不能记为 HTTP/WSS 通过。下一步补充本地 TLS 服务端异常记录定位失败来源。第一阶段实现提交为 `4b2ae81a36d`。
+
+## 第三阶段：确认 Eden 的 MSG_PEEK 缺陷
+
+服务端异常为 `Cannot determine the frame size or a corrupted frame was received`。进一步抓取首次非空读取，前缀为 `03 01 05 E4 ...`，TLS 握手记录应有的首字节 `16` 已被消费。该诊断版 NRO 摘要 `2c7a595f345abae4ab81373cfe54d59bc311e071d7666aaeab6a1afdcbec4c88`。
+
+`SslStream.IO.cs` 在分配接收缓冲区前对 InnerStream 做零长度读取，Unix Socket 实现将其转换成 1 字节 `MSG_PEEK`。核对 [Eden v0.2.1 原始源码](https://git.eden-emu.dev/eden-emu/eden/src/tag/v0.2.1/src/core/internal_network/network.cpp)：`Socket::Recv` 和 `RecvFrom` 断言 flags 为 0，实际传给宿主 recv/recvfrom 的也是固定 0，导致 peek 变成消费数据。模拟器日志同时记录 `network.cpp:957 assert flags == 0`。
+
+新增不链接任何 .NET 运行时的纯 libnx 最小复现：
+
+```sh
+docker run --rm -v "$PWD:/runtime" nativeaot-libnx-managed:10.0.11 bash ports/libnx/build-socket-peek-probe.sh
+```
+
+```powershell
+.\ports\libnx\run-tls-probe.ps1 -EdenPath '模拟器绝对路径/eden-cli.exe' -Suite SocketPeek
+```
+
+探针发送 `16 03 01 04`，peek 返回 1 字节且值为 22，但随后的正常接收仅得到 3 字节，首字节为 3；预期是保留全部 4 字节且首字节仍为 22。`peek.preserves_data=0`，进程退出 1。该 NRO 摘要为 `814939681e13cc68b724b2dd5f198aa9583d9d3f97e00352fb1e5524e994cb14`，结果保存在 `artifacts/libnx/socketpeek-probe/history`。
+
+因此当前无法用该 Eden 版本验收默认 NetworkStream 上的标准 HTTPS/WSS。没有把这项缺陷处理成游戏 Core 分支、修改 SslStream 跳过零长度读取，或伪造 Socket.Peek 的成功结果。游戏 TLS 路径和运行时锁定保持原状；任意流 TLS 的目标通过项仍成立。真机的 MSG_PEEK 与标准网络 TLS 尚待验收。

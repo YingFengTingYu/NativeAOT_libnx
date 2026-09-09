@@ -46,3 +46,5 @@ dotnet run --project ports/libnx/tests/sslstream/TlsProbe.csproj -c Release -p:U
 探针覆盖临时证书创建与 PKCS#12、TLS 1.2/1.3、ALPN、不依赖 socket 的分段流、读取取消后继续使用、`close_notify`、主机名/信任错误、握手取消、本地 HTTPS 和 WSS 二进制回显。目标端另验证默认信任库的公共 HTTPS，以及自签名、主机名不符、过期证书拒绝。主机通过不代表目标端通过；每轮实际结果记录在 `ports/libnx/results`。
 
 尚未据此验收客户端证书、撤销检查、OCSP stapling、会话恢复、密钥更新、长时间并发、真机或完整密码库 API。
+
+当前固定 Eden v0.2.1 的 `MSG_PEEK` 会实际取走字节，破坏 SslStream 在 NetworkStream 上的零长度等待。任意流 TLS 已在目标端通过，默认 HTTPS/WSS 尚被此模拟器问题阻塞；纯 libnx 复现及证据见[第二十八轮第三阶段](../results/2026-09-10-round28-sslstream.md)。不要将宿主 HTTPS/WSS 的通过结果误记为模拟器通过。
