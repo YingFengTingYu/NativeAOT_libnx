@@ -59,7 +59,7 @@ def main():
     tests = repo / "ports/ios-legacy/tests/managed"
     source = tests / ("Arm32Hello.cs" if args.minimal else "Program.cs")
     run([dotnet, csc, "/nologo", "/noconfig", "/nostdlib", "/target:exe",
-         "/unsafe", "/nullable:enable", "/optimize+", f"/out:{out / (name + '.dll')}",
+         "/unsafe", "/nullable:enable", "/optimize+", "/define:LEGACY_IOS_ARM32", f"/out:{out / (name + '.dll')}",
          *[f"/r:{p}" for p in references.values()], source], out / "csc.log")
 
     features = {

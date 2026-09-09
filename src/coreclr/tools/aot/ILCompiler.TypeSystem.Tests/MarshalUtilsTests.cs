@@ -23,6 +23,21 @@ namespace TypeSystemTests
         }
 
         [Theory]
+        [InlineData(TargetArchitecture.ARM, TargetOS.iOS, false)]
+        [InlineData(TargetArchitecture.ARM, TargetOS.Linux, true)]
+        [InlineData(TargetArchitecture.ARM64, TargetOS.iOS, true)]
+        public void AppleArmStructsWithDifferentNativeLayoutRequireMarshalling(TargetArchitecture architecture, TargetOS os, bool blittable)
+        {
+            TestTypeSystemContext context = new TestTypeSystemContext(architecture, os);
+            ModuleDesc module = context.CreateModuleForSimpleName("CoreTestAssembly");
+            context.SetSystemModule(module);
+            Assert.Equal(blittable, MarshalUtils.IsBlittableType(module.GetType("EnumAlignment", "LongIntEnumStruct")));
+            Assert.Equal(blittable, MarshalUtils.IsBlittableType(module.GetType("EnumAlignment", "LongIntEnumStructFieldStruct")));
+            Assert.True(MarshalUtils.IsBlittableType(module.GetType("EnumAlignment", "PackedDoubleStruct")));
+            Assert.True(MarshalUtils.IsBlittableType(module.GetType("EnumAlignment", "AlignedDoubleStruct")));
+        }
+
+        [Theory]
         [InlineData(WellKnownType.Void)]
         [InlineData(WellKnownType.Boolean)]
         [InlineData(WellKnownType.Char)]

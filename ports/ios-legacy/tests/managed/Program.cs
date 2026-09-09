@@ -278,6 +278,29 @@ internal static class Program
     [StructLayout(LayoutKind.Sequential)]
     private struct Mixed { public int Tag; public double Value; public short Tail; }
 
+#if LEGACY_IOS_ARM32
+    private const int NativeStructPacking = 4;
+#else
+    private const int NativeStructPacking = 0;
+#endif
+    // UnmanagedCallersOnly performs no marshalling, so its types must describe
+    // the native layout explicitly. DllImport/delegates above exercise the
+    // automatic conversion from the ordinary managed Mixed representation.
+    [StructLayout(LayoutKind.Sequential, Pack = NativeStructPacking)]
+    private struct NativeMixed { public int Tag; public double Value; public short Tail; }
+
+    private struct AtomicCounts { public long Value; }
+    [StructLayout(LayoutKind.Explicit, Size = 128)]
+    private struct SeparatedAtomicCounts
+    {
+        [FieldOffset(64)] public AtomicCounts Counts;
+    }
+    private sealed class AtomicHolder
+    {
+        public int Prefix;
+        public SeparatedAtomicCounts Separated;
+    }
+
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct Packed { public byte Tag; public double Value; public short Tail; }
 
@@ -342,8 +365,11 @@ internal static class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static Mixed StaticStructCallback(int prefix, Float4 floats, Double2 doubles, Packed packed, long marker)
-        => StructCallbackBody(prefix, floats, doubles, packed, marker);
+    private static NativeMixed StaticStructCallback(int prefix, Float4 floats, Double2 doubles, Packed packed, long marker)
+    {
+        Mixed result = StructCallbackBody(prefix, floats, doubles, packed, marker);
+        return new NativeMixed { Tag = result.Tag, Value = result.Value, Tail = result.Tail };
+    }
 
     private static unsafe void CheckInterop()
     {
@@ -395,7 +421,7 @@ internal static class Program
         Holder receiver = new Holder { Value = 99 };
         StructCallback callback = (prefix, f, d, p, marker) => receiver.Value == 99 ? StructCallbackBody(prefix, f, d, p, marker) : default;
         IntPtr delegateEntry = Marshal.GetFunctionPointerForDelegate(callback);
-        IntPtr staticEntry = (IntPtr)(delegate* unmanaged[Cdecl]<int, Float4, Double2, Packed, long, Mixed>)&StaticStructCallback;
+        IntPtr staticEntry = (IntPtr)(delegate* unmanaged[Cdecl]<int, Float4, Double2, Packed, long, NativeMixed>)&StaticStructCallback;
         for (int iteration = 0; iteration < 8; iteration++)
         {
             foreach (IntPtr entry in new[] { delegateEntry, staticEntry })
@@ -407,6 +433,25 @@ internal static class Program
         Check(Volatile.Read(ref s_interopCallbackCount) - before == 32, "Struct callback count is incorrect");
         GC.KeepAlive(callback);
         GC.KeepAlive(receiver);
+
+        Console.WriteLine("  interop: managed 64-bit atomics before and after compacting GC");
+        AtomicHolder[] counters = new AtomicHolder[16];
+        for (int i = 0; i < counters.Length; i++)
+            counters[i] = new AtomicHolder { Prefix = i };
+        for (int round = 0; round < 2; round++)
+        {
+            foreach (AtomicHolder counter in counters)
+            {
+                fixed (long* location = &counter.Separated.Counts.Value)
+                    Check(((nuint)location & 7) == 0, "Managed nested int64 field lost eight-byte alignment");
+                long beforeValue = Volatile.Read(ref counter.Separated.Counts.Value);
+                Check(Interlocked.CompareExchange(ref counter.Separated.Counts.Value, beforeValue + 1, beforeValue) == beforeValue,
+                    "Managed nested int64 compare-exchange failed");
+                Check(Interlocked.Read(ref counter.Separated.Counts.Value) == round + 1, "Managed int64 read failed");
+            }
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        }
+        GC.KeepAlive(counters);
     }
 
     private static void CheckTasks()

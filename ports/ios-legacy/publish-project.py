@@ -88,6 +88,7 @@ def main():
     # generators, resources and managed packages. The managed stage has no RID;
     # target-specific CoreLib and framework implementations are supplied to ILC.
     properties = [f"-p:Configuration={args.configuration}", "-p:PublishAot=false", "-p:PublishTrimmed=false",
+                  f"-p:LegacyIOSArchitecture={args.arch}", "-p:LegacyIOSMinimumOSVersion=7.0",
                   "-p:RuntimeIdentifier=", "-p:RuntimeIdentifiers=", "-p:SelfContained=false", "-p:UseAppHost=false",
                   "-p:PublishSingleFile=false", "-p:PublishReadyToRun=false", "-p:UseArtifactsOutput=true",
                   f"-p:ArtifactsPath={work / 'managed'}", "-p:InvariantGlobalization=true", "-p:EventSourceSupport=false",

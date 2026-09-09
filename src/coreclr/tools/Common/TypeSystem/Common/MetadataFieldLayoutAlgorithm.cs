@@ -991,14 +991,7 @@ namespace Internal.TypeSystem
         private static int ComputePackingSize(MetadataType type, ClassLayoutMetadata layoutMetadata)
         {
             if (layoutMetadata.PackingSize == 0)
-            {
-                // Darwin's ARM ABI uses four-byte default struct alignment,
-                // including double and int64 fields. Keep the managed heap and
-                // explicitly requested packing rules independent of this ABI.
-                if (type.Context.Target.Architecture == TargetArchitecture.ARM && type.Context.Target.IsApplePlatform)
-                    return 4;
                 return type.Context.Target.MaximumAlignment;
-            }
             else
                 return layoutMetadata.PackingSize;
         }

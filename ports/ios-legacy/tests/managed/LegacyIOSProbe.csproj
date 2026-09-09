@@ -13,6 +13,9 @@
     <StripSymbols>false</StripSymbols>
     <OptimizationPreference>Speed</OptimizationPreference>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(LegacyIOSArchitecture)' == 'arm'">
+    <DefineConstants>$(DefineConstants);LEGACY_IOS_ARM32</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
     <IlcArg Include="--noinlinetls" />

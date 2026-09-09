@@ -60,7 +60,48 @@ namespace Internal.TypeSystem.Interop
                 }
             }
 
-            return true;
+            return HasMatchingAppleArmLayout(mdType);
+        }
+
+        private static bool HasMatchingAppleArmLayout(MetadataType type)
+        {
+            TargetDetails target = type.Context.Target;
+            if (target.Architecture != TargetArchitecture.ARM || !target.IsApplePlatform || type.IsPrimitive || type.IsEnum)
+                return true;
+            ClassLayoutMetadata layout = type.GetClassLayout();
+            if (layout.PackingSize != 0)
+                return true;
+
+            // NativeStructType uses four-byte default packing on Darwin ARM.
+            // A different native representation requires field marshalling,
+            // even when all fields individually have blittable types.
+            if (!type.IsValueType)
+                return false;
+
+            LayoutInt size = LayoutInt.Zero;
+            LayoutInt alignment = LayoutInt.One;
+            foreach (FieldDesc field in type.GetFields())
+            {
+                if (field.IsStatic)
+                    continue;
+
+                LayoutInt fieldSize = target.LayoutPointerSize;
+                LayoutInt fieldAlignment = target.LayoutPointerSize;
+                if (field.FieldType is DefType defType && defType.IsValueType)
+                {
+                    fieldSize = defType.InstanceFieldSize;
+                    fieldAlignment = defType.InstanceFieldAlignment;
+                }
+                fieldAlignment = LayoutInt.Min(fieldAlignment, new LayoutInt(4));
+                alignment = LayoutInt.Max(alignment, fieldAlignment);
+                LayoutInt offset = type.IsExplicitLayout ? field.Offset : LayoutInt.AlignUp(size, fieldAlignment, target);
+                if (offset != field.Offset)
+                    return false;
+                size = LayoutInt.Max(size, offset + fieldSize);
+            }
+            size = layout.Size == 0 ? LayoutInt.AlignUp(LayoutInt.Max(size, LayoutInt.One), alignment, target) :
+                LayoutInt.Max(size, new LayoutInt(layout.Size));
+            return size == type.InstanceFieldSize;
         }
     }
 }

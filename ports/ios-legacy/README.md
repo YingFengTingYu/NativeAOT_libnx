@@ -1,8 +1,8 @@
 # NativeAOT：旧版 iOS ARM 适配
 
-本目录从现有 `ios-arm64` NativeAOT 向下适配 iOS 7，不依赖 macios 托管绑定。当前已构建 ARM64 与 ARMv7 的运行时、`System.Native` 和 C# 命令行探针；两种架构均在 iOS 10.0.2 的 iPad mini 4 上通过全部 7 组功能测试，Apple Silicon Mac 回归也通过。**尚未在真实 iOS 7 设备上验证，不能据此宣称完整支持 iOS 7。**
+本目录从现有 `ios-arm64` NativeAOT 向下适配 iOS 7，不依赖 macios 托管绑定。当前已构建 ARM64 与 ARMv7 的运行时、`System.Native` 和 C# 命令行探针；两种架构的普通项目示例及全部 8 组功能测试均在 iOS 10.0.2 的 iPad mini 4 上通过，Apple Silicon Mac 回归也通过。**尚未在真实 iOS 7 设备上验证，不能据此宣称完整支持 iOS 7。**
 
-新增的普通项目发布入口和第 8 组 `interop` 测试，以及 ARM32 默认结构体对齐修复，见 [项目发布与互操作验证记录](results/2026-09-09-project-interop.md)。上述七组真机结果属于此前的运行时验证；本轮产物的设备状态单独记录。
+普通项目发布入口、第 8 组 `interop` 测试及 ARM32 原生结构体布局与封送修复，见 [项目发布与互操作验证记录](results/2026-09-09-project-interop.md)。
 
 ## 固定基线与分支
 
@@ -32,7 +32,7 @@ git switch -c codex/legacy-ios-arm64
 6. 补齐旧 SDK 未暴露的 Darwin 网络类型常量，并修正基础库对旧系统时钟接口的假设。
 7. 为 ILCompiler 添加显式的 Mach-O 最低版本参数；未指定时保留上游默认值。
 
-这不是完整的旧 iOS runtime-pack。当前探针没有使用 CryptoKit、Network.framework 或 Swift 支持库，因此只在探针的链接配置中移除了这些现代框架。复杂结构体互操作、完整加密、TLS/HTTP、非 invariant 全球化和游戏集成尚未验收。
+这不是完整的旧 iOS runtime-pack。当前探针没有使用 CryptoKit、Network.framework 或 Swift 支持库，因此只在探针的链接配置中移除了这些现代框架。混合/嵌套结构体与回调已有真机覆盖；其他 ABI 情形、完整加密、TLS/HTTP、非 invariant 全球化和游戏集成尚未验收。
 
 ## 环境
 
@@ -89,7 +89,7 @@ python3 ports/ios-legacy/build-probe.py --platform osx
 
 ## ARM32 实验构建
 
-ARM32 目标为 iOS 7 ARMv7。已经构建并链接原生运行时、CoreLib、基础库和两个 NativeAOT 探针；在 iOS 10.0.2 的 iPad mini 4 上，ARM32 NativeAOT 已通过全部七组测试和新增的参数传递回归。iOS 7 真机兼容性仍未验证。
+ARM32 目标为 iOS 7 ARMv7。已经构建并链接原生运行时、CoreLib、基础库和两个 NativeAOT 探针；在 iOS 10.0.2 的 iPad mini 4 上，ARM32 NativeAOT 已通过全部八组测试，包括参数传递、结构体封送和原子变量对齐回归。iOS 7 真机兼容性仍未验证。
 
 先构建在 Apple Silicon Mac 上运行的编译器和 ARM 代码生成后端，再构建目标运行时。第一条命令的 `arm64` 是宿主工具构建配置；后续 `arm` 才是待运行程序的目标架构。
 
@@ -136,6 +136,16 @@ python3 ports/ios-legacy/publish-project.py /绝对路径/MyApp.csproj --arch ar
 - `--sign`：越狱测试用 ad-hoc 双摘要签名，并验证签名。
 
 也会读取项目的 `NativeLibrary`、`DirectPInvoke`、`IlcArg` 和 `RuntimeHostConfigurationOption`。目标架构、最低版本、pthread TLS、Workstation GC 和必要特性开关由入口统一设置，不接受冲突配置。托管阶段 `RuntimeIdentifier` 为空；需要区分平台的项目应使用独立项目或项目自身的显式构建配置，不应依赖此阶段的 `ios-arm` RID 条件。
+
+入口向项目提供 `LegacyIOSArchitecture`（`arm` 或 `arm64`）和 `LegacyIOSMinimumOSVersion`（`7.0`）属性，可用于条件编译原生接口声明。例如：
+
+```xml
+<PropertyGroup Condition="'$(LegacyIOSArchitecture)' == 'arm'">
+  <DefineConstants>$(DefineConstants);LEGACY_IOS_ARM32</DefineConstants>
+</PropertyGroup>
+```
+
+Apple ARM32 的原生结构体默认按 4 字节打包，但托管结构体仍保留 .NET 的布局规则，以满足 64 位原子操作的对齐需求。`DllImport` 和委托封送会转换布局不同的结构体。`UnmanagedCallersOnly`、原始指针和直接 `calli` 不执行这种转换，接口类型必须明确匹配原生布局：ARM32 上含 `double` / `long` 的结构体通常需要 `Pack=4`；ARM64 应按对应的原生声明设置。示例测试通过上述编译条件区分两种架构。不要为所有托管结构体统一改成 `Pack=4`。
 
 成功时打印 `publish/` 下的可执行文件路径。请把**整个 `publish/` 目录的内容**一起传到设备，普通内容文件需要和程序一起发布。`build-manifest.json` 记录哈希、架构、特性配置和构建日志目录；每次构建另存工作目录，失败时保留前一次成功产物。静态审计自动检查最低版本、依赖、TLS 和 ARM32 展开表；清单中的 `device_tested` 保持 `false`，不会把编译成功当成真机成功。
 

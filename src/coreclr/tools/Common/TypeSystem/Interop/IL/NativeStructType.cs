@@ -247,6 +247,12 @@ namespace Internal.TypeSystem.Interop
 
             ClassLayoutMetadata result;
             result.PackingSize = layout.PackingSize;
+            if (result.PackingSize == 0 && Context.Target.Architecture == TargetArchitecture.ARM && Context.Target.IsApplePlatform)
+            {
+                // Only the native representation follows Darwin's four-byte
+                // packing. Managed structs retain their alignment for atomics.
+                result.PackingSize = 4;
+            }
             result.Size = layout.Size;
 
             return result;

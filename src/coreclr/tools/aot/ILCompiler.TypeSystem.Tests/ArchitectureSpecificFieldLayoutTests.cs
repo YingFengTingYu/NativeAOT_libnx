@@ -83,7 +83,7 @@ namespace TypeSystemTests
         }
 
         [Theory]
-        [InlineData(TargetArchitecture.ARM, TargetOS.iOS, 4, 24, 12)]
+        [InlineData(TargetArchitecture.ARM, TargetOS.iOS, 8, 32, 16)]
         [InlineData(TargetArchitecture.ARM, TargetOS.Linux, 8, 32, 16)]
         [InlineData(TargetArchitecture.ARM64, TargetOS.iOS, 8, 32, 16)]
         public void TestAppleArmDefaultStructPacking(TargetArchitecture architecture, TargetOS os,
