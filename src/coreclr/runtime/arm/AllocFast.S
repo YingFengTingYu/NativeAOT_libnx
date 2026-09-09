@@ -179,7 +179,13 @@ LOCAL_LABEL(NewOutOfMemory):
 
         POP_COOP_PINVOKE_FRAME
 
+#ifdef __APPLE__
+        // Managed code can be farther away than a Thumb branch can reach.
+        PREPARE_EXTERNAL_VAR RhExceptionHandling_FailedAllocation, r12
+        bx          r12
+#else
         b           C_FUNC(RhExceptionHandling_FailedAllocation)
+#endif
 NESTED_END RhpNewObject, _TEXT
 
 // Shared code for RhNewString, RhpNewArrayFast and RhpNewObjectArray
@@ -273,7 +279,13 @@ LOCAL_LABEL(StringSizeOverflow):
         // MethodTable is in r0 already
         mov         r1, 0                  // Indicate that we should throw OOM
         NEW_ARRAY_FAST_TAIL_EPILOG
+#ifdef __APPLE__
+        // Managed code can be farther away than a Thumb branch can reach.
+        PREPARE_EXTERNAL_VAR RhExceptionHandling_FailedAllocation, r12
+        bx          r12
+#else
         b           C_FUNC(RhExceptionHandling_FailedAllocation)
+#endif
 LEAF_END RhNewString, _TEXT
 
 
@@ -320,7 +332,13 @@ LOCAL_LABEL(ArrayOutOfMemoryFinal):
         // MethodTable is in r0 already
         mov         r1, #0                  // Indicate that we should throw OOM.
         NEW_ARRAY_FAST_TAIL_EPILOG
+#ifdef __APPLE__
+        // Managed code can be farther away than a Thumb branch can reach.
+        PREPARE_EXTERNAL_VAR RhExceptionHandling_FailedAllocation, r12
+        bx          r12
+#else
         b           C_FUNC(RhExceptionHandling_FailedAllocation)
+#endif
 
 LOCAL_LABEL(ArraySizeOverflow):
         // We get here if the size of the final array object can't be represented as an unsigned
@@ -330,7 +348,13 @@ LOCAL_LABEL(ArraySizeOverflow):
         // MethodTable is in r0 already
         mov         r1, #1                  // Indicate that we should throw OverflowException
         NEW_ARRAY_FAST_TAIL_EPILOG
+#ifdef __APPLE__
+        // Managed code can be farther away than a Thumb branch can reach.
+        PREPARE_EXTERNAL_VAR RhExceptionHandling_FailedAllocation, r12
+        bx          r12
+#else
         b           C_FUNC(RhExceptionHandling_FailedAllocation)
+#endif
 LEAF_END RhpNewArrayFast, _TEXT
 
 
@@ -385,7 +409,13 @@ LOCAL_LABEL(RhpNewVariableSizeObject_OutOfMemory):
 
         POP_COOP_PINVOKE_FRAME
 
+#ifdef __APPLE__
+        // Managed code can be farther away than a Thumb branch can reach.
+        PREPARE_EXTERNAL_VAR RhExceptionHandling_FailedAllocation, r12
+        bx          r12
+#else
         b           C_FUNC(RhExceptionHandling_FailedAllocation)
+#endif
 
 NESTED_END RhpNewVariableSizeObject, _TEXT
 
@@ -437,7 +467,13 @@ LOCAL_LABEL(Array8SizeOverflow):
         mov         r1, #1              // Indicate that we should throw OverflowException
 
         POP_COOP_PINVOKE_FRAME
+#ifdef __APPLE__
+        // Managed code can be farther away than a Thumb branch can reach.
+        PREPARE_EXTERNAL_VAR RhExceptionHandling_FailedAllocation, r12
+        bx          r12
+#else
         b           C_FUNC(RhExceptionHandling_FailedAllocation)
+#endif
 
 LOCAL_LABEL(Array8OutOfMemory):
         // This is the OOM failure path. We're going to tail-call to a managed helper that will throw
@@ -450,6 +486,12 @@ LOCAL_LABEL(Array8OutOfMemory1):
         mov         r1, #0              // Indicate that we should throw OOM.
 
         POP_COOP_PINVOKE_FRAME
+#ifdef __APPLE__
+        // Managed code can be farther away than a Thumb branch can reach.
+        PREPARE_EXTERNAL_VAR RhExceptionHandling_FailedAllocation, r12
+        bx          r12
+#else
         b           C_FUNC(RhExceptionHandling_FailedAllocation)
+#endif
 
 NESTED_END RhpNewArrayFastAlign8, _TEXT

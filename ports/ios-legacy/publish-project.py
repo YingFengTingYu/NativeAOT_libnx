@@ -51,6 +51,7 @@ def main():
     parser.add_argument("--link-framework", action="append", default=[], help="额外的 Apple framework 名称，可重复")
     parser.add_argument("--direct-pinvoke", action="append", default=[], help="静态解析的 DllImport 库名，可重复")
     parser.add_argument("--sign", action="store_true", help="生成越狱测试用 ad-hoc SHA-1/SHA-256 签名")
+    parser.add_argument("--strip", action="store_true", help="移除本地原生符号，完整符号程序保留在工作目录")
     args = parser.parse_args()
     project = require(args.project.expanduser().resolve())
     if project.suffix != ".csproj":
@@ -127,9 +128,11 @@ def main():
 
     references = {p.name: p for p in sorted(sfx.glob("*.dll"))}
     managed_files = list(published.rglob("*.dll"))
+    satellites = []
     for path in managed_files:
         if path.name.endswith(".resources.dll"):
-            raise SystemExit("当前未接入卫星资源程序集；普通 EmbeddedResource 可用。")
+            satellites.append(path)
+            continue
         if path != entry:
             if path.name in {p.name for p in core.glob("*.dll")}:
                 raise SystemExit(f"项目不能覆盖 NativeAOT CoreLib 或运行时辅助程序集：{path.name}")
@@ -149,6 +152,7 @@ def main():
                 "System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported": "false",
                 "System.Reflection.Metadata.MetadataUpdater.IsSupported": "false",
                 "System.StartupHookProvider.IsSupported": "false",
+                "System.Resources.ResourceManager.AllowCustomResourceTypes": "false",
                 "System.Runtime.InteropServices.BuiltInComInterop.IsSupported": "false",
                 "System.Runtime.InteropServices.EnableConsumingManagedCodeFromNativeHosting": "false",
                 "System.Threading.Thread.EnableAutoreleasePool": "false", "System.GC.Server": "false"}
@@ -162,6 +166,7 @@ def main():
                  "--noinlinetls", "-O", "--stacktracedata", "--scanreflection", "--generateunmanagedentrypoints:System.Private.CoreLib,HIDDEN",
                  f"--runtimeknob:RUNTIME_IDENTIFIER={rid}"]
     arguments += [f"-r:{p}" for p in references.values()]
+    arguments += [f"--satellite:{p}" for p in satellites]
     optimization = result["Properties"]["OptimizationPreference"].lower()
     if optimization in ["speed", "size"]:
         arguments.append("--Ot" if optimization == "speed" else "--Os")
@@ -211,16 +216,21 @@ def main():
     binary = stage / name
     linker = ["xcrun", "clang", "-target", triple, "-isysroot", sdk, "-Wl,-dead_strip", "-Wl,-map," + str(work / "link.map")]
     if args.arch == "arm":
-        linker += ["-Wl,-no_compact_unwind", "-Wl,-keep_dwarf_unwind"]
+        linker += ["-Wl,-no_compact_unwind", "-Wl,-keep_dwarf_unwind", "-Wl,-segprot,__AOT,rx,rx"]
     linker += [obj, *extra_objects, *extra_libraries, *libraries, system_native, "-lc++", "-liconv", "-lz"]
     for framework in frameworks:
         linker += ["-framework", framework]
     run([*linker, "-o", binary], work / "link.log")
+    if args.strip:
+        shutil.copy2(binary, work / (name + ".unstripped"))
+        run(["xcrun", "strip", "-x", binary], work / "strip.log")
     if args.sign:
         run(["codesign", "--force", "--sign", "-", "--digest-algorithm=sha1,sha256", binary], work / "sign.log")
         run(["codesign", "--verify", "--strict", binary], work / "sign-verify.log")
-    run(["python3", PORT / "audit-probe.py", "--arch", args.arch, "--binary", binary, "--report", work / "audit.json"],
-        work / "audit.log")
+    audit_command = ["python3", PORT / "audit-probe.py", "--arch", args.arch, "--binary", binary, "--report", work / "audit.json"]
+    if args.strip:
+        audit_command += ["--symbols-binary", work / (name + ".unstripped")]
+    run(audit_command, work / "audit.log")
 
     # Embed managed resources in AOT; carry ordinary publish content beside the
     # executable. Reject native payloads which this entry point did not link.
@@ -237,6 +247,7 @@ def main():
     manifest = {**identity, "minimum_os": "7.0", "sdk": str(sdk), "configuration": args.configuration,
                 "binary": name, "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "signed": args.sign,
                 "work_directory": str(work), "static_audit_passed": True, "device_tested": False,
+                "stripped": args.strip,
                 "managed_dependencies": sorted(p.name for p in managed_files if p != entry), "features": features}
     write_json(stage / "build-manifest.json", manifest)
     destination = out / "publish"

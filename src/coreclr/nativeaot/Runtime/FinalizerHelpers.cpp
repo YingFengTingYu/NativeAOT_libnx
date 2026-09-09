@@ -77,7 +77,13 @@ uint32_t WINAPI FinalizerStart(void* pContext)
 
     // Run the managed portion of the finalizer. This call will never return.
 
+#if defined(__APPLE__) && defined(TARGET_ARM)
+    // The managed finalizer lives in __AOT and may exceed Thumb branch range.
+    decltype(&ProcessFinalizers) volatile processFinalizers = ProcessFinalizers;
+    processFinalizers();
+#else
     ProcessFinalizers();
+#endif
 
     ASSERT(!"Finalizer thread should never return");
     return 0;

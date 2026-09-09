@@ -10,9 +10,11 @@ namespace ILCompiler.DependencyAnalysis.ARM
         public ARMEmitter(NodeFactory factory, bool relocsOnly)
         {
             Builder = new ObjectDataBuilder(factory, relocsOnly);
+            _isApplePlatform = factory.Target.IsApplePlatform;
             TargetRegister = new TargetRegisterMap(factory.Target.OperatingSystem);
         }
 
+        private readonly bool _isApplePlatform;
         public ObjectDataBuilder Builder;
         public TargetRegisterMap TargetRegister;
 
@@ -195,6 +197,18 @@ namespace ILCompiler.DependencyAnalysis.ARM
         public void EmitJMP(ISymbolNode symbol)
         {
             Debug.Assert(!symbol.RepresentsIndirectionCell);
+            if (_isApplePlatform)
+            {
+                // Mach-O ld cannot extend every Thumb tail branch in a large
+                // image. Preserve hidden ip arguments and the 8-byte red zone.
+                Builder.EmitShort(unchecked((short)0xb084)); // sub sp, #16
+                Builder.EmitUInt(0xc004f8cd); // str ip, [sp, #4]
+                EmitMOV(Register.R12, symbol);
+                Builder.EmitUInt(0xc000f8cd); // str ip, [sp]
+                Builder.EmitUInt(0xc004f8dd); // ldr ip, [sp, #4]
+                Builder.EmitUInt(0xfb10f85d); // ldr pc, [sp], #16
+                return;
+            }
             Builder.EmitReloc(symbol, RelocType.IMAGE_REL_BASED_THUMB_BRANCH24);
             Builder.EmitByte(0);
             Builder.EmitByte(0xF0);

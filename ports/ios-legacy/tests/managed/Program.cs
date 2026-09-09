@@ -23,6 +23,23 @@ internal static class Program
         ~Finalizable() => Interlocked.Increment(ref s_finalized);
     }
 
+    private interface IBoxedValue
+    {
+        int Read();
+    }
+
+    private struct BoxedValue : IBoxedValue
+    {
+        public int Value;
+        public int Read() => Value;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ReadBoxed(IBoxedValue value) => value.Read();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static object[] InvalidArray(int count) => new object[count];
+
     private sealed class Holder
     {
         public int Value;
@@ -159,6 +176,21 @@ internal static class Program
             caught = true;
         }
         Check(caught, "Null-reference exception failed");
+        caught = false;
+        try
+        {
+            _ = InvalidArray(-1);
+        }
+        catch (OverflowException)
+        {
+            caught = true;
+        }
+        Check(caught, "Allocation overflow helper failed");
+
+        IBoxedValue boxed = new BoxedValue { Value = 42 };
+        Check(ReadBoxed(boxed) == 42 && ReadBoxed(boxed) == 42, "Boxed interface dispatch or cache failed");
+        Func<int> read = boxed.Read;
+        Check(read() == 42 && read.Method.Name == "Read", "Boxed delegate or unboxing target lookup failed");
     }
 
     private static void CheckThreads()

@@ -54,6 +54,9 @@ def main():
     parser.add_argument("--display-name", required=True)
     parser.add_argument("--app-name", required=True, help="不含 .app 后缀的目录名")
     parser.add_argument("--url-scheme", help="可选的应用专用 URL scheme")
+    parser.add_argument("--orientation", choices=["portrait", "landscape"], default="portrait")
+    parser.add_argument("--hide-status-bar", action="store_true")
+    parser.add_argument("--version", default="1.0", help="应用显示版本")
     parser.add_argument("--output", type=Path, required=True, help="专用打包输出目录")
     parser.add_argument("--sign", action="store_true", help="为越狱设备生成 ad-hoc 双摘要签名")
     args = parser.parse_args()
@@ -91,7 +94,7 @@ def main():
         "CFBundleDevelopmentRegion": "zh_CN", "CFBundleExecutable": binary_name,
         "CFBundleIdentifier": args.bundle_id, "CFBundleName": args.app_name,
         "CFBundleDisplayName": args.display_name, "CFBundlePackageType": "APPL",
-        "CFBundleInfoDictionaryVersion": "6.0", "CFBundleShortVersionString": "1.0", "CFBundleVersion": "1",
+        "CFBundleInfoDictionaryVersion": "6.0", "CFBundleShortVersionString": args.version, "CFBundleVersion": "1",
         "CFBundleSupportedPlatforms": ["iPhoneOS"], "MinimumOSVersion": manifest["minimum_os"],
         "LSRequiresIPhoneOS": True, "UIDeviceFamily": [1, 2], "UIRequiresFullScreen": True,
         "UIFileSharingEnabled": True, "UISupportedInterfaceOrientations": ["UIInterfaceOrientationPortrait"],
@@ -102,6 +105,11 @@ def main():
     }
     if args.url_scheme:
         info["CFBundleURLTypes"] = [{"CFBundleURLName": args.bundle_id, "CFBundleURLSchemes": [args.url_scheme]}]
+    if args.orientation == "landscape":
+        info["UISupportedInterfaceOrientations"] = ["UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]
+        info["UIInterfaceOrientation"] = "UIInterfaceOrientationLandscapeLeft"
+    if args.hide_status_bar:
+        info["UIStatusBarHidden"] = True
     (bundle / "Info.plist").write_bytes(plistlib.dumps(info))
     (bundle / "PkgInfo").write_bytes(b"APPL????")
     if args.sign:

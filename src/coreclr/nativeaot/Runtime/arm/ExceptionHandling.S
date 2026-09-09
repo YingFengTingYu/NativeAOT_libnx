@@ -69,7 +69,12 @@ NESTED_ENTRY RhpThrowHwEx, _TEXT, NoHandler
         mov         r0, r4 	        // restore the exception code
         // r0 contains the exception code
         // r1 contains the address of the ExInfo
+#ifdef __APPLE__
+        PREPARE_EXTERNAL_VAR RhThrowHwEx, r12
+        blx         r12
+#else
         bl          C_FUNC(RhThrowHwEx)
+#endif
 
 GLOBAL_LABEL RhpThrowHwEx2
 
@@ -174,7 +179,12 @@ LOCAL_LABEL(NotHiJacked):
         mov         r0, r4 // Restore exception object
         // r0 contains the exception object
         // r1 contains the address of the new ExInfo
+#ifdef __APPLE__
+        PREPARE_EXTERNAL_VAR RhThrowEx, r12
+        blx         r12
+#else
         bl          C_FUNC(RhThrowEx)
+#endif
 
 GLOBAL_LABEL RhpThrowEx2
 
@@ -235,7 +245,12 @@ NESTED_ENTRY RhpRethrow, _TEXT, NoHandler
         mov         r0, r3
         // r0 contains the currently active ExInfo
         // r1 contains the address of the new ExInfo
+#ifdef __APPLE__
+        PREPARE_EXTERNAL_VAR RhRethrow, r12
+        blx         r12
+#else
         blx    C_FUNC(RhRethrow)
+#endif
 
 GLOBAL_LABEL RhpRethrow2
 

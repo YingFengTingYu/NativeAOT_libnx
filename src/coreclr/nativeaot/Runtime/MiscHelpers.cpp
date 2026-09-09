@@ -278,6 +278,16 @@ FCIMPL1(uint8_t *, RhGetCodeTarget, uint8_t * pCodeOrg)
         unboxingStub = true;
         pCode += 1;
     }
+#ifdef __APPLE__
+    // Apple unboxing stubs use a range-independent PC-relative tail jump.
+    if (unboxingStub &&
+        (pCode[0] & 0xfbf0) == 0xf240 && (pCode[1] & 0x0f00) == 0x0c00 &&
+        (pCode[2] & 0xfbf0) == 0xf2c0 && (pCode[3] & 0x0f00) == 0x0c00 &&
+        pCode[4] == 0x44fc && pCode[5] == 0x4760)
+    {
+        return (uint8_t *)((uintptr_t)(pCode + 6) + GetThumb2Mov32(pCode));
+    }
+#endif
     // is this movw r12,#imm16; movt r12,#imm16; ldr pc,[r12]
     // or movw r12,#imm16; movt r12,#imm16; bx r12
     if  ((pCode[0] & 0xfbf0) == 0xf240 && (pCode[1] & 0x0f00) == 0x0c00
@@ -427,7 +437,13 @@ EXTERN_C int32_t QCALLTYPE RhpGetCurrentThreadStackTrace(void* pOutputBuffer, ui
 
     ThreadStore::GetCurrentThread()->DeferTransitionFrame();
 
+#if defined(__APPLE__) && defined(TARGET_ARM)
+    // The managed worker lives in __AOT and may exceed Thumb branch range.
+    decltype(&RhpCalculateStackTraceWorker) volatile worker = RhpCalculateStackTraceWorker;
+    return worker(pOutputBuffer, outputBufferLength, pAddressInCurrentFrame);
+#else
     return RhpCalculateStackTraceWorker(pOutputBuffer, outputBufferLength, pAddressInCurrentFrame);
+#endif
 }
 
 EXTERN_C UInt32_BOOL QCALLTYPE DebugDebugger_IsNativeDebuggerAttached()

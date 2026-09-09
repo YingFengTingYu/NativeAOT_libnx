@@ -73,8 +73,13 @@ void* __unbox_z() { return &_bookend_z; }
 
 extern void * __modules_a[] __asm("section$start$__DATA$__modules");
 extern void * __modules_z[] __asm("section$end$__DATA$__modules");
+#if defined(TARGET_ARM)
+extern char __managedcode_a __asm("section$start$__AOT$__managedcode");
+extern char __managedcode_z __asm("section$end$__AOT$__managedcode");
+#else
 extern char __managedcode_a __asm("section$start$__TEXT$__managedcode");
 extern char __managedcode_z __asm("section$end$__TEXT$__managedcode");
+#endif
 extern char __unbox_a __asm("section$start$__TEXT$__unbox");
 extern char __unbox_z __asm("section$end$__TEXT$__unbox");
 
@@ -208,11 +213,21 @@ static int InitializeRuntime()
         return -1;
     }
 
+#if defined(__APPLE__) && defined(TARGET_ARM)
+    decltype(&InitializeModules) volatile initializeModules = InitializeModules;
+    initializeModules(osModule, __modules_a, (int)((__modules_z - __modules_a)), (void **)&c_classlibFunctions, _countof(c_classlibFunctions));
+#else
     InitializeModules(osModule, __modules_a, (int)((__modules_z - __modules_a)), (void **)&c_classlibFunctions, _countof(c_classlibFunctions));
+#endif
 
 #ifdef NATIVEAOT_DLL
     // Run startup method immediately for a native library
+#if defined(__APPLE__) && defined(TARGET_ARM)
+    decltype(&__managed__Startup) volatile managedStartup = __managed__Startup;
+    managedStartup();
+#else
     __managed__Startup();
+#endif
 #endif // NATIVEAOT_DLL
 
     return 0;
@@ -236,7 +251,13 @@ int main(int argc, char* argv[])
     _cexit();
     ExitProcess(exitCode);
 #else
+#if defined(__APPLE__) && defined(TARGET_ARM)
+    // The managed entry point can reside beyond Thumb's direct-call range.
+    int (*volatile managedMain)(int, char**) = &__managed__Main;
+    return managedMain(argc, argv);
+#else
     return __managed__Main(argc, argv);
+#endif
 #endif
 }
 

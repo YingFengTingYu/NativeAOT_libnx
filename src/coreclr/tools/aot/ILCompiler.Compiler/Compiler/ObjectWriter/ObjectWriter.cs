@@ -76,12 +76,13 @@ namespace ILCompiler.ObjectWriter
         /// For associated sections, such as exception or debugging information, the <paramref name="symbolName"/>
         /// will be different.
         /// </remarks>
-        private protected SectionWriter GetOrCreateSection(ObjectNodeSection section, string comdatName = null, string symbolName = null)
+        private protected SectionWriter GetOrCreateSection(ObjectNodeSection section, string comdatName = null, string symbolName = null, string sectionKey = null)
         {
+            sectionKey ??= section.Name;
             int sectionIndex;
             SectionData sectionData;
 
-            if (comdatName is not null || !_sectionNameToSectionIndex.TryGetValue(section.Name, out sectionIndex))
+            if (comdatName is not null || !_sectionNameToSectionIndex.TryGetValue(sectionKey, out sectionIndex))
             {
                 sectionData = new SectionData(section.Type == SectionType.Executable ? _insPaddingByte : (byte)0);
                 sectionIndex = _sectionIndexToData.Count;
@@ -90,7 +91,7 @@ namespace ILCompiler.ObjectWriter
                 _sectionIndexToRelocations.Add(new());
                 if (comdatName is null)
                 {
-                    _sectionNameToSectionIndex.Add(section.Name, sectionIndex);
+                    _sectionNameToSectionIndex.Add(sectionKey, sectionIndex);
                 }
             }
             else
@@ -102,6 +103,12 @@ namespace ILCompiler.ObjectWriter
                 this,
                 sectionIndex,
                 sectionData);
+        }
+
+        private protected virtual SectionWriter GetNodeSection(ObjectNode node, ObjectData contents, string symbolName)
+        {
+            ObjectNodeSection section = node.GetSection(_nodeFactory);
+            return ShouldShareSymbol(node, section) ? GetOrCreateSection(section, symbolName, symbolName) : GetOrCreateSection(section);
         }
 
         private protected bool ShouldShareSymbol(ObjectNode node)
@@ -403,10 +410,7 @@ namespace ILCompiler.ObjectWriter
                     currentSymbolName = GetMangledName(symbolNode);
                 }
 
-                ObjectNodeSection section = node.GetSection(_nodeFactory);
-                SectionWriter sectionWriter = ShouldShareSymbol(node, section) ?
-                    GetOrCreateSection(section, currentSymbolName, currentSymbolName) :
-                    GetOrCreateSection(section);
+                SectionWriter sectionWriter = GetNodeSection(node, nodeContents, currentSymbolName);
 
                 sectionWriter.EmitAlignment(nodeContents.Alignment);
 

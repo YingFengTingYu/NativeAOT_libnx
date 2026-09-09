@@ -99,7 +99,7 @@ def main():
                  "libstandalonegc-disabled.a", "libaotminipal.a", "libstdc++compat.a"]
     binary = out / name
     run(["xcrun", "clang", "-target", "armv7-apple-ios7.0", "-isysroot", sdk,
-         "-Wl,-dead_strip", "-Wl,-no_compact_unwind", "-Wl,-keep_dwarf_unwind", "-Wl,-map," + str(out / "link.map"),
+         "-Wl,-dead_strip", "-Wl,-no_compact_unwind", "-Wl,-keep_dwarf_unwind", "-Wl,-segprot,__AOT,rx,rx", "-Wl,-map," + str(out / "link.map"),
          out / (name + ".o"), callback, *[native / x for x in libraries], system_native,
          "-lc++", "-liconv", "-lz", "-framework", "Foundation", "-framework", "Security",
          "-framework", "CoreFoundation", "-o", binary], out / "link.log")
