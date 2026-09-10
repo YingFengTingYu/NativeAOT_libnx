@@ -1,5 +1,7 @@
 # NativeAOT / libnx 移植实验
 
+循环 GC 检查点现改为按实际 DFS 回边插入，减少内联及块重排后的误插；正负对照、压缩 GC 与独立解压验证见[第二十九轮](results/2026-09-10-round29-gc-poll-cycles.md)。
+
 本分支基于公开的 `dotnet/runtime`，目标是直接使用 devkitPro/libnx 构建 Nintendo Switch homebrew。当前原型已经在模拟器通过基础 C#、移动 GC、终结器、显式异常和两个托管工作线程的 GC 测试；尚未完成全面运行时及游戏验证。
 
 最新进展：实际 Lawn.Core 已在模拟器初始化并解压真实资源包，见 [第十九轮](results/2026-09-07-round19.md) 与 [第二十轮](results/2026-09-07-round20.md)。游戏画面、输入、音频和隐式硬件异常仍未验收。

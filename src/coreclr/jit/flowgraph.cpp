@@ -80,16 +80,21 @@ PhaseStatus Compiler::fgInsertGCPolls()
 #ifdef TARGET_ARM64
     if ((JitConfig.LibnxLoopGcPolls() != 0) && (eeGetEEInfo()->targetAbi == CORINFO_NATIVEAOT_ABI))
     {
-        // Every cycle has an edge to a block whose number is no greater than
-        // the source's. Mark before splitting any blocks; existing poll lowering
-        // supplies the proper EH/GC metadata and runtime helper call.
+        // Block numbers are identities, not a traversal order. Inlining and
+        // block motion can put a lower-numbered successor on an acyclic path.
+        // Use actual DFS backedges: every directed cycle (including irreducible
+        // cycles) contains one. Do not rely on natural-loop dominance here.
+        // Recompute before marking and splitting blocks, invalidating analyses
+        // that refer to the previous preorder/postorder annotations.
+        fgInvalidateDfsTree();
+        FlowGraphDfsTree* dfsTree = fgComputeDfs();
         for (BasicBlock* block : Blocks())
         {
-            if (!block->KindIs(BBJ_ALWAYS, BBJ_COND, BBJ_SWITCH))
+            if (!block->KindIs(BBJ_ALWAYS, BBJ_COND, BBJ_SWITCH) || !dfsTree->Contains(block))
                 continue;
             for (BasicBlock* successor : block->Succs())
             {
-                if (successor->bbNum <= block->bbNum)
+                if (dfsTree->Contains(successor) && dfsTree->IsAncestor(successor, block))
                 {
                     block->SetFlags(BBF_NEEDS_GCPOLL);
                     optMethodFlags |= OMF_NEEDS_GCPOLLS;
