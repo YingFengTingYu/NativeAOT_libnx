@@ -14,6 +14,8 @@ target_link_libraries(nativeaot-system PRIVATE
 set_target_properties(nativeaot-system PROPERTIES SUFFIX .elf)
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/romfs")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/romfs/fixture.bin" "0123456789abcdef")
+string(REPEAT "0123456789abcdef" 16384 LARGE_ROMFS_FIXTURE)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/romfs/large.bin" "${LARGE_ROMFS_FIXTURE}")
 add_custom_command(TARGET nativeaot-system POST_BUILD
     COMMAND "${LIBNX_DEVKITPRO}/tools/bin/nacptool" --create "NativeAOT RomFS probe" "NativeAOT" "1.0"
         "${CMAKE_CURRENT_BINARY_DIR}/probe.nacp"

@@ -3,12 +3,14 @@
 #include <switch.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "pal_io.h"
 #include "pal_process.h"
 #include "pal_threading.h"
 #include "pal_time.h"
 #include "pal_datetime.h"
 #include "pal_random.h"
+#include "pal_libnx_io.h"
 
 u32 __nx_applet_type = AppletType_None;
 static LowLevelMonitor* s_monitor;
@@ -82,6 +84,106 @@ static bool FileChecks(void)
     Record("file.cleanup", closed && deleted);
     return passed && closed && deleted;
 }
+typedef struct BufferedReadCheck
+{
+    intptr_t fd;
+    uint8_t* output;
+    const uint8_t* expected;
+    int offset;
+    bool passed;
+} BufferedReadCheck;
+
+static void BufferedReadWorker(void* argument)
+{
+    BufferedReadCheck* check = argument;
+    check->passed = true;
+    for (int index = 0; index < 64; index++)
+    {
+        if (SystemNative_PRead(check->fd, check->output, 8192, check->offset) != 8192 ||
+            memcmp(check->output, check->expected + check->offset, 8192) != 0)
+        {
+            check->passed = false;
+            break;
+        }
+    }
+}
+
+static bool BufferedReadChecks(void)
+{
+    enum { Size = 0x40000, MappingSize = 0x41000 };
+    const char* path = "/nativeaot-buffered-read.tmp";
+    uint8_t* expected = malloc(Size);
+    uint8_t* mapped = SystemNative_MMap(NULL, MappingSize, PAL_PROT_READ | PAL_PROT_WRITE,
+        PAL_MAP_PRIVATE | PAL_MAP_ANONYMOUS, -1, 0);
+    if (expected == NULL || mapped == (void*)-1)
+    {
+        free(expected);
+        if (mapped != (void*)-1) SystemNative_MUnmap(mapped, MappingSize);
+        return false;
+    }
+    for (int index = 0; index < Size; index++) expected[index] = (uint8_t)(index * 37 + index / 257);
+    intptr_t fd = SystemNative_Open(path, PAL_O_CREAT | PAL_O_TRUNC | PAL_O_RDWR, 0600);
+    bool passed = fd >= 0 && SystemNative_Write(fd, expected, Size) == Size;
+    for (int mode = 0; mode <= 1 && passed; mode++)
+    {
+        SystemNative_LibnxSetReadBuffering(mode);
+        uint64_t before = SystemNative_LibnxGetBufferedReadCount();
+        const int sizes[] = { 0, 1, 4095, 4096, 8192, 65536, 131072, 131073 };
+        for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]) && passed; i++)
+        {
+            passed = SystemNative_LSeek(fd, 19, PAL_SEEK_SET) == 19 &&
+                SystemNative_PRead(fd, mapped + 17, sizes[i], 37) == sizes[i] &&
+                memcmp(mapped + 17, expected + 37, (size_t)sizes[i]) == 0 &&
+                SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 19;
+        }
+        IOVector vectors[2] = { { mapped + 17, 8192 }, { mapped + 10000, 65536 } };
+        passed = passed && SystemNative_PReadV(fd, vectors, 2, 103) == 8192 + 65536 &&
+            memcmp(mapped + 17, expected + 103, 8192) == 0 &&
+            memcmp(mapped + 10000, expected + 103 + 8192, 65536) == 0 &&
+            SystemNative_PRead(fd, mapped, 8192, Size - 23) == 23 &&
+            memcmp(mapped, expected + Size - 23, 23) == 0 &&
+            SystemNative_PRead(fd, mapped, 8192, Size + 1) == 0 &&
+            SystemNative_PRead(fd, mapped, 8192, -1) == -1 && errno == EINVAL &&
+            SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 19;
+        expected[37] ^= 0xFF;
+        passed = passed && SystemNative_PWrite(fd, expected + 37, 1, 37) == 1 &&
+            SystemNative_PRead(fd, mapped + 17, 8192, 37) == 8192 &&
+            memcmp(mapped + 17, expected + 37, 8192) == 0 &&
+            SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 19;
+        uint64_t after = SystemNative_LibnxGetBufferedReadCount();
+        passed = passed && (mode ? after > before : after == before);
+        Record(mode ? "file.buffered_staging" : "file.buffered_control", passed);
+    }
+    if (passed)
+    {
+        BufferedReadCheck checks[2] = {
+            { fd, mapped + 17, expected, 37, false },
+            { fd, mapped + 32785, expected, 50003, false }
+        };
+        Thread threads[2];
+        bool created[2] = { false, false }, started[2] = { false, false };
+        for (int i = 0; i < 2 && passed; i++)
+        {
+            created[i] = R_SUCCEEDED(threadCreate(&threads[i], BufferedReadWorker, &checks[i], NULL, 0x8000, 0x2C, -2));
+            started[i] = created[i] && R_SUCCEEDED(threadStart(&threads[i]));
+            passed = started[i];
+        }
+        for (int i = 0; i < 2; i++)
+        {
+            if (started[i]) threadWaitForExit(&threads[i]);
+            if (created[i]) threadClose(&threads[i]);
+        }
+        passed = passed && checks[0].passed && checks[1].passed && SystemNative_LSeek(fd, 0, PAL_SEEK_CUR) == 19;
+        Record("file.buffered_concurrent", passed);
+    }
+    if (fd >= 0) passed = SystemNative_Close(fd) == 0 && passed;
+    passed = SystemNative_Unlink(path) == 0 && passed;
+    passed = SystemNative_MUnmap(mapped, MappingSize) == 0 && passed;
+    free(expected);
+    SystemNative_LibnxSetReadBuffering(0);
+    return passed;
+}
+
 static bool RomfsChecks(void)
 {
     Result mounted = romfsInit();
@@ -112,6 +214,27 @@ static bool RomfsChecks(void)
     if (fd >= 0)
         SystemNative_Close(fd);
     Record("romfs.read_only", readOnly);
+    intptr_t large = SystemNative_Open("/romfs/large.bin", PAL_O_RDONLY, 0);
+    uint8_t* largeOutput = SystemNative_MMap(NULL, 0x21000, PAL_PROT_READ | PAL_PROT_WRITE,
+        PAL_MAP_PRIVATE | PAL_MAP_ANONYMOUS, -1, 0);
+    bool largePassed = large >= 0 && largeOutput != (void*)-1;
+    SystemNative_LibnxSetReadBuffering(1);
+    uint64_t stagedBefore = SystemNative_LibnxGetBufferedReadCount();
+    if (largePassed)
+    {
+        largePassed = SystemNative_LSeek(large, 13, PAL_SEEK_SET) == 13 &&
+            SystemNative_PRead(large, largeOutput + 7, 0x20000, 37) == 0x20000 &&
+            SystemNative_LSeek(large, 0, PAL_SEEK_CUR) == 13;
+        for (int i = 0; i < 0x20000 && largePassed; i++)
+            largePassed = largeOutput[i + 7] == "0123456789abcdef"[(i + 37) % 16];
+        largePassed = largePassed && SystemNative_PRead(large, largeOutput, 4096, 0x40000 - 9) == 9 &&
+            memcmp(largeOutput, "789abcdef", 9) == 0 && SystemNative_LSeek(large, 0, PAL_SEEK_CUR) == 13 &&
+            SystemNative_LibnxGetBufferedReadCount() == stagedBefore + 2;
+    }
+    SystemNative_LibnxSetReadBuffering(0);
+    if (large >= 0) largePassed = SystemNative_Close(large) == 0 && largePassed;
+    if (largeOutput != (void*)-1) largePassed = SystemNative_MUnmap(largeOutput, 0x21000) == 0 && largePassed;
+    Record("romfs.buffered_large", largePassed);
     char cwd[64];
     bool paths = SystemNative_ChDir("/romfs") == 0 &&
                  SystemNative_GetCwd(cwd, sizeof(cwd)) != NULL && strcmp(cwd, "/romfs/") == 0;
@@ -132,7 +255,7 @@ static bool RomfsChecks(void)
         sd = SystemNative_Close(fd) == 0 && SystemNative_Unlink("/romfs-sd-check.tmp") == 0;
     Record("romfs.paths_and_sd", paths && sd);
     bool unmounted = R_SUCCEEDED(romfsExit());
-    return passed && readOnly && paths && sd && unmounted;
+    return passed && readOnly && largePassed && paths && sd && unmounted;
 }
 
 int main(void)
@@ -205,7 +328,8 @@ int main(void)
                         memcmp(first, second, sizeof(first)) != 0;
     Record("random.csrng_interface", secureRandom);
     bool files = FileChecks();
+    bool buffered = BufferedReadChecks();
     bool romfs = RomfsChecks();
-    Record("pass", unmapped && timeout && time && random && secureRandom && files && romfs);
+    Record("pass", unmapped && timeout && time && random && secureRandom && files && buffered && romfs);
     return 0;
 }

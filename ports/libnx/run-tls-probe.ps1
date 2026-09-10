@@ -106,7 +106,9 @@ foreach ($mode in $modes)
     {
         @('begin=1', 'mapping.protection=1', 'mapping.release=1', 'monitor.timeout=1',
           'monitor.signal=1', 'time.monotonic=1', 'random.sanity=1', 'romfs.mount=1',
-          'romfs.read_seek=1', 'romfs.read_only=1', 'romfs.paths_and_sd=1', 'pass=1')
+          'romfs.read_seek=1', 'romfs.read_only=1', 'romfs.paths_and_sd=1',
+          'file.buffered_control=1', 'file.buffered_staging=1', 'file.buffered_concurrent=1',
+          'romfs.buffered_large=1', 'pass=1')
     }
     elseif ($Suite -eq 'Threads')
     {

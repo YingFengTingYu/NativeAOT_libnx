@@ -8,10 +8,12 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdlib.h>
 #include "pal_io.h"
 #include "pal_process.h"
 #include "pal_uid.h"
 #include "pal_libnx_networking.h"
+#include "pal_libnx_io.h"
 
 c_static_assert(sizeof(off_t) == sizeof(int64_t));
 c_static_assert(S_IFREG == PAL_S_IFREG && S_IFDIR == PAL_S_IFDIR && S_IFMT == PAL_S_IFMT);
@@ -21,7 +23,52 @@ c_static_assert(SEEK_SET == PAL_SEEK_SET && SEEK_CUR == PAL_SEEK_CUR && SEEK_END
 // position-changing System.Native operations around seek/read-or-write/restore.
 // Sharing these descriptors with concurrent native stdio is not supported yet.
 static Mutex s_positionLock;
+enum { ReadBufferCapacity = 0x20000, ReadBufferMinimum = 0x1000 };
+static bool s_readBuffering;
+static void* s_readBuffer;
+static uint64_t s_bufferedReadCount;
 void LibnxInitializeDebugStdio(void);
+
+void SystemNative_LibnxSetReadBuffering(int32_t enabled)
+{
+    mutexLock(&s_positionLock);
+    s_readBuffering = enabled != 0;
+    mutexUnlock(&s_positionLock);
+}
+
+uint64_t SystemNative_LibnxGetBufferedReadCount(void)
+{
+    mutexLock(&s_positionLock);
+    uint64_t count = s_bufferedReadCount;
+    mutexUnlock(&s_positionLock);
+    return count;
+}
+
+// Some managed mappings cannot be used as Horizon IPC buffers. libnx then
+// falls back to small stack-buffer transfers. A reusable native heap buffer
+// keeps these requests large. This is staging only: no file contents are
+// cached, and the same read count, error and position semantics are retained.
+// The caller holds s_positionLock, which also protects this process-lifetime buffer.
+static ssize_t ReadPositionedDataLocked(int fd, void* buffer, size_t size)
+{
+    if (!s_readBuffering || buffer == NULL || size < ReadBufferMinimum || size > ReadBufferCapacity)
+        return read(fd, buffer, size);
+
+    if (s_readBuffer == NULL)
+    {
+        int savedError = errno;
+        s_readBuffer = aligned_alloc(0x1000, ReadBufferCapacity);
+        errno = savedError;
+        if (s_readBuffer == NULL)
+            return read(fd, buffer, size);
+    }
+
+    s_bufferedReadCount++;
+    ssize_t count = read(fd, s_readBuffer, size);
+    if (count > 0)
+        memcpy(buffer, s_readBuffer, (size_t)count);
+    return count;
+}
 
 // SD remains the managed Unix root; /romfs is reserved for the host-mounted
 // read-only RomFS. Managed paths must be Unix-rooted before BCL normalization.
@@ -211,7 +258,7 @@ static int64_t PositionedIoLocked(intptr_t fd, void* buffer, size_t size, int64_
     off_t saved = lseek((int)fd, 0, SEEK_CUR);
     if (saved >= 0 && lseek((int)fd, offset, SEEK_SET) >= 0)
     {
-        result = writing ? write((int)fd, buffer, (size_t)size) : read((int)fd, buffer, (size_t)size);
+        result = writing ? write((int)fd, buffer, size) : ReadPositionedDataLocked((int)fd, buffer, size);
         int operationError = errno;
         if (lseek((int)fd, saved, SEEK_SET) < 0 && result >= 0)
             result = -1;

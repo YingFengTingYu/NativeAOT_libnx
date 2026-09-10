@@ -87,3 +87,6 @@ docker run --rm -v "$PWD:/runtime" nativeaot-libnx-build:10.0.11 bash ports/libn
 第一个命令验证实际编译宏、目标文件架构以及 API 链接检测。第二个命令使用第三轮新增的 NativeAOT 独立入口，目前已经配置成功，不再进入 CoreCLR 宿主的 GSS/Kerberos 依赖。诊断保存在 `artifacts/log/libnx/cross-configure.log`。
 
 执行 `bash ports/libnx/build-runtime.sh` 可编译当前原型运行时及最小 `System.Native`。使用 `link-managed-probe.sh` 链接时，需通过 `LIBNX_MANAGED_OBJECT` 和 `LIBNX_PROBE_HOST` 指定托管目标文件与原生入口。编译托管代码必须引入 `Libnx.NativeAOT.targets` 的 `--noinlinetls` 设置。当前产物仍不是覆盖完整 API 的正式 runtime-pack。
+
+
+可选原生读取中转缓冲及对照验证见[第二十八轮](results/2026-09-10-round28-read-buffer.md)。默认保持旧读取路径，真机性能收益尚待测量。
