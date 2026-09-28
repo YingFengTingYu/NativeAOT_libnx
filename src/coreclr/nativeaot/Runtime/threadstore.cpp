@@ -352,6 +352,16 @@ void ThreadStore::ResumeAllThreads(bool waitForGCEvent)
     {
         GCHeapUtilities::GetGCHeap()->SetWaitForGCEvent();
     }
+#ifdef TARGET_LIBNX
+    // Publish all GC writes and clear the trap before allowing externally
+    // suspended managed instructions to execute again. The thread-store lock
+    // still protects the list and prevents another suspension from starting.
+    FOREACH_THREAD(pTargetThread)
+    {
+        pTargetThread->ResumeLibnxExternalSuspension();
+    }
+    END_FOREACH_THREAD
+#endif
 } // ResumeAllThreads
 
 void ThreadStore::InitiateThreadAbort(Thread* targetThread, Object * threadAbortException, bool doRudeAbort)

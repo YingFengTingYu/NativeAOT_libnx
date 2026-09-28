@@ -169,6 +169,10 @@ struct RuntimeThreadLocals
 #ifdef FEATURE_GC_STRESS
     uint32_t                m_uRand;                                // current per-thread random number
 #endif // FEATURE_GC_STRESS
+#ifdef TARGET_LIBNX
+    // Preallocated: capturing a thread at an arbitrary instruction must not allocate.
+    NATIVE_CONTEXT          m_libnxSuspendedContext;
+#endif
 };
 
 struct ReversePInvokeFrame
@@ -239,6 +243,10 @@ private:
 
     bool CacheTransitionFrameForSuspend();
     void ResetCachedTransitionFrame();
+#ifdef TARGET_LIBNX
+    void ResumeLibnxExternalSuspension();
+    bool IsLibnxExternallySuspended() { return m_interruptedContext == &m_libnxSuspendedContext; }
+#endif
     void EnsureRuntimeInitialized();
 
     //
@@ -275,6 +283,9 @@ public:
 
 #ifdef FEATURE_HIJACK
     void                Hijack();
+#ifdef TARGET_LIBNX
+    bool TryLibnxExternalSuspension(NATIVE_CONTEXT* context);
+#endif
     void                Unhijack();
     bool                IsHijacked();
     void*               GetHijackedReturnAddress();

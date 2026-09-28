@@ -124,6 +124,13 @@ int main(void)
     LibnxSleep(20);
     bool stopped = before == __atomic_load_n(&s_counter, __ATOMIC_RELAXED) && context.pc.x && context.sp;
     Record("thread.stopped_context", stopped);
+    ThreadContext reread;
+    bool held = LibnxThreadReadPausedContext(&s_workerOwner, &reread) &&
+                reread.pc.x == context.pc.x && reread.sp == context.sp &&
+                LibnxFlushThreadWrites();
+    LibnxSleep(20);
+    held = held && before == __atomic_load_n(&s_counter, __ATOMIC_RELAXED);
+    Record("thread.flush_preserves_pause", held);
     bool resumed = LibnxThreadResume(&s_workerOwner);
     LibnxSleep(20);
     resumed = resumed && __atomic_load_n(&s_counter, __ATOMIC_RELAXED) > before;
@@ -142,6 +149,6 @@ int main(void)
     bool info = LibnxHeapInfo(&total, &available) && total && available <= total && LibnxCpuCount();
     Record("system.info", info);
     bool reaped = ReaperChecks();
-    Record("pass", stack && paused && stopped && resumed && rendezvous && exited && info && reaped && cpuTicks);
+    Record("pass", stack && paused && stopped && held && resumed && rendezvous && exited && info && reaped && cpuTicks);
     return 0;
 }

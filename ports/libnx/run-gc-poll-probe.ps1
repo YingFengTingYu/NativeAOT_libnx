@@ -1,12 +1,17 @@
 param(
     [Parameter(Mandatory = $true)][string]$EdenPath,
     [string]$ProbeDirectory,
-    [switch]$NegativeControl
+    [switch]$NegativeControl,
+    [switch]$ExternalSuspend
 )
 
 $ErrorActionPreference = 'Stop'
+if ($NegativeControl -and $ExternalSuspend) { throw '负对照与外部暂停验证不能同时启用。' }
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-if (!$ProbeDirectory) { $ProbeDirectory = Join-Path $repoRoot 'artifacts/libnx/gc-poll-probe' }
+if (!$ProbeDirectory)
+{
+    $ProbeDirectory = Join-Path $repoRoot $(if ($ExternalSuspend) { 'artifacts/libnx/gc-external-probe' } else { 'artifacts/libnx/gc-poll-probe' })
+}
 $probeRoot = (Resolve-Path -LiteralPath $ProbeDirectory).Path
 $nro = (Resolve-Path -LiteralPath (Join-Path $probeRoot 'managed-probe.nro')).Path
 $sourceExecutable = (Resolve-Path -LiteralPath $EdenPath).Path
@@ -66,10 +71,19 @@ $required = if ($NegativeControl) { @('stage.10=0', 'stage.80=1', 'stage.100=10'
       'stage.80=0','stage.82=0','stage.84=0','stage.85=0','stage.86=0','stage.88=0','stage.90=0')
 }
 $missing = @($required | Where-Object { $_ -notin $markers })
+if ($ExternalSuspend)
+{
+    $missing += @(@('stage.1=1', 'stage.72=1', 'stage.73=1') | Where-Object { $_ -notin $markers })
+}
+else
+{
+    $missing += @(@('stage.1=0') | Where-Object { $_ -notin $markers })
+}
 $passed = $finished -and $process.ExitCode -eq 0 -and $missing.Count -eq 0
 $result = [ordered]@{
     Passed = $passed
     NegativeControl = [bool]$NegativeControl
+    ExternalSuspend = [bool]$ExternalSuspend
     HardwareVerified = $false
     EmulatorExited = $finished
     EmulatorExitCode = $process.ExitCode

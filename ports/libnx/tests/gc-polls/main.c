@@ -3,13 +3,29 @@
 #include <switch.h>
 #include <stdio.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 
 u32 __nx_applet_type = AppletType_None;
 u32 __nx_applet_exit_mode = 1;
 extern int managed_gc_poll_main(void);
+extern uint64_t RhGetLibnxExternalGcSuspensionCount(void);
 static Thread watchdog;
 static Event cancel_watchdog;
 static atomic_int watchdog_fired;
+
+int gc_poll_external_enabled(void)
+{
+#ifdef GC_POLL_EXTERNAL_SUSPEND
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+uint64_t gc_poll_external_count(void)
+{
+    return RhGetLibnxExternalGcSuspensionCount();
+}
 
 void gc_poll_record(int stage, int value)
 {
@@ -49,6 +65,9 @@ int gc_poll_watchdog_stop(void)
 
 int main(void)
 {
+#ifdef GC_POLL_EXTERNAL_SUSPEND
+    setenv("DOTNET_LibnxExternalGcSuspend", "1", 1);
+#endif
     int result = managed_gc_poll_main();
     gc_poll_record(100, result);
     return result;

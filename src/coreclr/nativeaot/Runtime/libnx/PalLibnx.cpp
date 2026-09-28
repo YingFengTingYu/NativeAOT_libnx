@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <time.h>
 #include <minipal/thread.h>
+#include <atomic>
 
 extern "C" void _start();
 extern "C" char __end__[];
@@ -20,6 +21,13 @@ extern "C" uint32_t svcOutputDebugString(const char*, uint64_t);
 
 uint32_t g_RhNumberOfProcessors;
 PLATFORM_THREAD_LOCAL intptr_t tls_thunkData;
+static bool s_externalGcSuspend;
+static std::atomic<uint64_t> s_externalGcSuspensions;
+
+extern "C" uint64_t RhGetLibnxExternalGcSuspensionCount()
+{
+    return s_externalGcSuspensions.load(std::memory_order_relaxed);
+}
 
 void PalPrintFatalError(const char* text)
 {
@@ -33,6 +41,9 @@ void RhFailFast()
 }
 bool PalInit()
 {
+    // Experimental and opt-in. Read before any thread can be suspended.
+    const char* externalSuspend = getenv("DOTNET_LibnxExternalGcSuspend");
+    s_externalGcSuspend = externalSuspend != nullptr && strcmp(externalSuspend, "1") == 0;
     GCConfig::Initialize();
     if (!GCToOSInterface::Initialize())
         return false;
@@ -181,6 +192,11 @@ void PalHijack(Thread* thread)
     NATIVE_CONTEXT context = {};
     if (!LibnxThreadPause(thread, &context.ctx))
         RhFailFast();
+    if (s_externalGcSuspend && thread->TryLibnxExternalSuspension(&context))
+    {
+        s_externalGcSuspensions.fetch_add(1, std::memory_order_relaxed);
+        return; // ResumeAllThreads owns the matching kernel resume.
+    }
     NativeContextStorage original = context.ctx;
     Thread::HijackCallback(&context, thread, false);
     bool registersUnchanged = memcmp(&original, &context.ctx, sizeof(original)) == 0;

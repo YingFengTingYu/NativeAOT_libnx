@@ -31,6 +31,7 @@ uint32_t LibnxEventTestWaiterCount(void* event);
 bool LibnxThreadsInitialize(void);
 bool LibnxThreadAttach(void* owner, void (*onExit)(void*));
 bool LibnxThreadPause(void* owner, void* context);
+bool LibnxThreadReadPausedContext(void* owner, void* context);
 bool LibnxThreadResume(void* owner);
 bool LibnxFlushThreadWrites(void);
 bool LibnxGetStackBounds(void** low, void** high);

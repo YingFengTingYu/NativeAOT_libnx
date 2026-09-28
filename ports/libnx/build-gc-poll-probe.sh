@@ -14,5 +14,5 @@ dotnet restore "$project" "${properties[@]}" --source https://api.nuget.org/v3/i
 dotnet msbuild "$project" -t:Build,_ComputeResolvedCopyLocalPublishAssets,_ComputeAssembliesToCompileToNative,IlcCompile \
     -p:Configuration=Release "${properties[@]}" -v:minimal 2>&1 | tee "$output/build.log"
 LIBNX_MANAGED_OBJECT="$output/obj/GcPollProbe/release_linux-arm64/native/GcPollProbe.o" \
-LIBNX_PROBE_HOST="$repo_root/ports/libnx/tests/gc-polls/main.c" \
+LIBNX_PROBE_HOST="${LIBNX_GC_PROBE_HOST:-$repo_root/ports/libnx/tests/gc-polls/main.c}" \
 LIBNX_PROBE_OUTPUT="$output" bash ports/libnx/link-managed-probe.sh

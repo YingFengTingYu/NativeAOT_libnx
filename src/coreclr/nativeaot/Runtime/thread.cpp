@@ -29,6 +29,9 @@
 #include "GcEnum.h"
 #include "NativeContext.h"
 #include "minipal/time.h"
+#ifdef TARGET_LIBNX
+#include "LibnxPlatform.h"
+#endif
 
 #ifndef DACCESS_COMPILE
 
@@ -415,6 +418,19 @@ void GcScanWasmShadowStack(void * pfnEnumCallback, void * pvCallbackData)
 void Thread::GcScanRoots(ScanFunc * pfnEnumCallback, ScanContext * pvCallbackData)
 {
     this->CrossThreadUnhijack();
+
+#ifdef TARGET_LIBNX
+    if (IsLibnxExternallySuspended())
+    {
+        // The kernel can capture registers but cannot write them back through an
+        // ordinary thread handle. Pin their possible referents before relocation.
+        // Stack slots and heap fields still use the normal precise GC walk.
+        m_libnxSuspendedContext.ForEachPossibleObjectRef([&](size_t* reference)
+        {
+            EnumGcRefConservatively((PTR_OBJECTREF)reference, pfnEnumCallback, pvCallbackData);
+        });
+    }
+#endif
 
 #ifdef HOST_WASM
     GcScanWasmShadowStack(pfnEnumCallback, pvCallbackData);
@@ -833,6 +849,56 @@ NATIVE_CONTEXT* Thread::GetInterruptedContext()
     ASSERT(m_interruptedContext != NULL);
     return m_interruptedContext;
 }
+
+#if defined(TARGET_LIBNX) && !defined(DACCESS_COMPILE)
+bool Thread::TryLibnxExternalSuspension(NATIVE_CONTEXT* context)
+{
+    // Called by the suspension owner with the target kernel thread paused.
+    // Do not allocate, log or acquire runtime locks on this path.
+    if (!ThreadStore::IsTrapThreadsRequested() || !GCHeapUtilities::IsGCInProgress() ||
+        this == ThreadStore::GetSuspendingThread() || IsGCSpecial() || IsDoNotTriggerGcSet() ||
+        m_pTransitionFrame != NULL || m_pCachedTransitionFrame != NULL || m_interruptedContext != NULL ||
+        GCHeapUtilities::IsServerHeap() || GCHeapUtilities::GetGCHeap()->IsConcurrentGCEnabled())
+        return false;
+
+    void* ip = (void*)context->GetIp();
+    RuntimeInstance* runtime = GetRuntimeInstance();
+    if (!runtime->IsManaged(ip) || !IsWithinStackBounds((void*)context->GetSp()) ||
+        (context->GetSp() & 15) != 0)
+        return false;
+
+    // Reject native syscalls (which may not expose x0-x18), prologs, epilogs
+    // and other locations without precise GC metadata. The normal hijack path
+    // remains responsible for such locations; a later attempt may succeed.
+    ICodeManager* codeManager = runtime->GetCodeManagerForAddress(ip);
+    if (!codeManager->IsSafePoint(ip) || !codeManager->IsUnwindable(ip))
+        return false;
+
+    CrossThreadUnhijack();
+    m_libnxSuspendedContext = *context;
+    m_interruptedContext = &m_libnxSuspendedContext;
+    m_pCachedTransitionFrame = INTERRUPTED_THREAD_MARKER;
+    return true;
+}
+
+void Thread::ResumeLibnxExternalSuspension()
+{
+    if (!IsLibnxExternallySuspended())
+        return;
+
+    // Verify that GC did not relocate a register reference in the snapshot.
+    // This also detects an accidental early resume of the kernel thread.
+    NATIVE_CONTEXT actual = {};
+    if (!LibnxThreadReadPausedContext(this, &actual.ctx) ||
+        memcmp(&actual.ctx, &m_libnxSuspendedContext.ctx, sizeof(actual.ctx)) != 0)
+        RhFailFast();
+
+    ASSERT(m_pCachedTransitionFrame == NULL);
+    m_interruptedContext = NULL;
+    if (!LibnxThreadResume(this))
+        RhFailFast();
+}
+#endif
 
 #ifdef FEATURE_SUSPEND_REDIRECTION
 

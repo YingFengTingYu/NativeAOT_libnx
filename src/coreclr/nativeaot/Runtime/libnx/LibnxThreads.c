@@ -8,6 +8,7 @@ typedef struct AttachedThread
 {
     void* owner;
     Handle handle;
+    bool paused;
     void (*onExit)(void*);
     struct AttachedThread* next;
 } AttachedThread;
@@ -96,21 +97,22 @@ bool LibnxThreadAttach(void* owner, void (*onExit)(void*))
     return true;
 }
 
-static Handle FindThread(void* owner)
+static AttachedThread* FindThread(void* owner)
 {
     for (AttachedThread* entry = s_attached; entry; entry = entry->next)
     {
         if (entry->owner == owner)
-            return entry->handle;
+            return entry;
     }
-    return INVALID_HANDLE;
+    return NULL;
 }
 
 bool LibnxThreadPause(void* owner, void* context)
 {
     mutexLock(&s_attachedLock);
-    Handle handle = FindThread(owner);
-    bool valid = handle != INVALID_HANDLE && handle != threadGetCurHandle();
+    AttachedThread* entry = FindThread(owner);
+    Handle handle = entry ? entry->handle : INVALID_HANDLE;
+    bool valid = entry && !entry->paused && handle != threadGetCurHandle();
     s_threadError = valid ? svcSetThreadActivity(handle, ThreadActivity_Paused)
                          : MAKERESULT(Module_Libnx, LibnxError_BadInput);
 #ifdef LIBNX_THREAD_TESTING
@@ -124,6 +126,8 @@ bool LibnxThreadPause(void* owner, void* context)
 #endif
         if (s_threadError != 0)
             svcSetThreadActivity(handle, ThreadActivity_Runnable);
+        else
+            entry->paused = true;
     }
     mutexUnlock(&s_attachedLock);
     return s_threadError == 0;
@@ -132,9 +136,21 @@ bool LibnxThreadPause(void* owner, void* context)
 bool LibnxThreadResume(void* owner)
 {
     mutexLock(&s_attachedLock);
-    Handle handle = FindThread(owner);
-    s_threadError = handle != INVALID_HANDLE ? svcSetThreadActivity(handle, ThreadActivity_Runnable)
+    AttachedThread* entry = FindThread(owner);
+    s_threadError = entry && entry->paused ? svcSetThreadActivity(entry->handle, ThreadActivity_Runnable)
                                             : MAKERESULT(Module_Libnx, LibnxError_BadInput);
+    if (s_threadError == 0)
+        entry->paused = false;
+    mutexUnlock(&s_attachedLock);
+    return s_threadError == 0;
+}
+
+bool LibnxThreadReadPausedContext(void* owner, void* context)
+{
+    mutexLock(&s_attachedLock);
+    AttachedThread* entry = FindThread(owner);
+    s_threadError = entry && entry->paused ? svcGetThreadContext3(context, entry->handle)
+                                         : MAKERESULT(Module_Libnx, LibnxError_BadInput);
     mutexUnlock(&s_attachedLock);
     return s_threadError == 0;
 }
@@ -149,7 +165,9 @@ bool LibnxFlushThreadWrites(void)
     bool result = true;
     for (AttachedThread* entry = s_attached; entry; entry = entry->next)
     {
-        if (entry->handle == current)
+        // A GC-owned suspension must survive both pre-GC and post-GC flushes.
+        // The capture that established it has already synchronized its writes.
+        if (entry->handle == current || entry->paused)
             continue;
         ThreadContext context;
         s_threadError = svcSetThreadActivity(entry->handle, ThreadActivity_Paused);
