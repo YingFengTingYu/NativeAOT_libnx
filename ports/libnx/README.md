@@ -44,6 +44,8 @@ IPv4 Socket、DNS、poll 异步队列、取消、HTTP 和明文 WebSocket 的公
 
 所有生成文件放在已被上游忽略的 `artifacts` 目录。保留原始 LICENSE 和第三方声明。每个可验证步骤分别提交，不提交 SDK、NuGet 包、模拟器或编译产物。
 
+`link-managed-probe.sh` 默认编译宿主并生成 ELF 和探针 NRO。正式应用自行封装 NRO/NSO 时可设置 `LIBNX_SKIP_NRO=1`，只生成 ELF 并收集许可，避免额外生成未使用的探针 NRO；旧的探针 NRO 仍会在链接前清理。宿主已有增量构建流程时，可通过 `LIBNX_PROBE_HOST_OBJECT` 传入已编译的非空目标文件，跳过宿主 C 编译；调用方负责跟踪源码、头文件、工具链及 `NX_MANAGED_PROBE`、pkg-config 等编译参数。未设置这两个变量时保持原探针行为。
+
 先验证未修改的 Linux 主机构建，再进行 libnx 交叉构建。原生库成功编译不代表 GC、异常、多线程或游戏已经可用。
 
 ## Linux 主机构建

@@ -18,10 +18,15 @@ if [[ -n "${LIBNX_PROBE_PKG_CONFIG:-}" ]]; then
     read -r -a extra_libs <<< "$(pkg-config --libs "$LIBNX_PROBE_PKG_CONFIG")"
     flags+=("${package_flags[@]}")
 fi
-"$DEVKITA64/bin/aarch64-none-elf-gcc" "${flags[@]}" -DNX_MANAGED_PROBE \
-    -c "$LIBNX_PROBE_HOST" -o "$output/main.o"
+host_object="${LIBNX_PROBE_HOST_OBJECT:-$output/main.o}"
+if [[ -n "${LIBNX_PROBE_HOST_OBJECT:-}" ]]; then
+    test -s "$host_object"
+else
+    "$DEVKITA64/bin/aarch64-none-elf-gcc" "${flags[@]}" -DNX_MANAGED_PROBE \
+        -c "$LIBNX_PROBE_HOST" -o "$host_object"
+fi
 "$DEVKITA64/bin/aarch64-none-elf-g++" "${flags[@]}" \
-    -specs="$DEVKITPRO/libnx/switch.specs" "$output/main.o" "$LIBNX_MANAGED_OBJECT" \
+    -specs="$DEVKITPRO/libnx/switch.specs" "$host_object" "$LIBNX_MANAGED_OBJECT" \
     -Wl,--whole-archive "$native/nativeaot/Bootstrap/dll/libbootstrapperdll.a" -Wl,--no-whole-archive \
     -Wl,--start-group "$native/nativeaot/Runtime/Full/libRuntime.WorkstationGC.a" \
     "$native/shared_minipal/libaotminipal.a" \
@@ -39,7 +44,9 @@ fi
     -Wl,-T,"$repo_root/ports/libnx/linker-aot.ld" \
     -Wl,-Map,"$output/managed-probe.map" -o "$output/managed-probe.elf" \
     >"$output/link.log" 2>&1
-"$DEVKITPRO/tools/bin/elf2nro" "$output/managed-probe.elf" "$output/managed-probe.nro"
+if [[ "${LIBNX_SKIP_NRO:-0}" != 1 ]]; then
+    "$DEVKITPRO/tools/bin/elf2nro" "$output/managed-probe.elf" "$output/managed-probe.nro"
+fi
 mkdir -p "$output/licenses"
 cp "$repo_root/LICENSE.TXT" "$output/licenses/dotnet-runtime.txt"
 cp "$repo_root/THIRD-PARTY-NOTICES.TXT" "$output/licenses/dotnet-third-party-notices.txt"
